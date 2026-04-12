@@ -1,0 +1,1756 @@
+<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartBudget – Premium AI Expense Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: { darkbg: '#090E17', darkcard: '#121A2F', darkborder: '#1E293B', primary: '#3B82F6' },
+                    boxShadow: {
+                        'glass': '0 10px 40px -10px rgba(0,0,0,0.08)',
+                        'glass-dark': '0 10px 40px -10px rgba(0,0,0,0.4)',
+                        'glow': '0 0 20px rgba(59, 130, 246, 0.5)',
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .dark ::-webkit-scrollbar-thumb { background: #334155; }
+        .glass-card { backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .glass-card:hover { transform: translateY(-2px); box-shadow: 0 20px 40px -15px rgba(0,0,0,0.05); }
+        .dark .glass-card:hover { box-shadow: 0 20px 40px -15px rgba(0,0,0,0.4); }
+        .ambient-glow-1 { position: fixed; top: -10%; left: -10%; width: 50vw; height: 50vw; background: radial-gradient(circle, rgba(59,130,246,0.15) 0%, rgba(0,0,0,0) 70%); border-radius: 50%; z-index: -1; pointer-events: none; }
+        .ambient-glow-2 { position: fixed; bottom: -10%; right: -10%; width: 40vw; height: 40vw; background: radial-gradient(circle, rgba(139,92,246,0.1) 0%, rgba(0,0,0,0) 70%); border-radius: 50%; z-index: -1; pointer-events: none; }
+        .dark .ambient-glow-1 { background: radial-gradient(circle, rgba(59,130,246,0.08) 0%, rgba(0,0,0,0) 70%); }
+        .dark .ambient-glow-2 { background: radial-gradient(circle, rgba(139,92,246,0.05) 0%, rgba(0,0,0,0) 70%); }
+        .spinner { width:18px; height:18px; border:3px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation:spin 0.8s linear infinite; display:inline-block; }
+        .spinner-blue { border-color: rgba(59,130,246,0.2); border-top-color:#3B82F6; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body x-data="SmartBudgetApp()"
+      :class="{ 'dark bg-darkbg text-slate-100': isDark, 'bg-[#F4F7FB] text-slate-900': !isDark }"
+      class="transition-colors duration-300 min-h-screen flex flex-col relative selection:bg-blue-500/30">
+
+    <div class="ambient-glow-1"></div>
+    <div class="ambient-glow-2"></div>
+
+    <!-- Toast -->
+    <div x-show="toast.show" x-cloak
+         x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+         :class="toast.type === 'error' ? 'bg-rose-600' : 'bg-emerald-600'"
+         class="fixed bottom-6 right-6 z-[100] text-white px-6 py-4 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3 max-w-sm">
+        <span x-text="toast.message"></span>
+    </div>
+
+    <!-- ── AUTH VIEW ── -->
+    <div x-init="$nextTick(() => init())" style="display:none"></div>
+    <div x-show="!isAuthenticated"
+         x-transition:enter="transition ease-out duration-500" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+         x-transition:leave="transition ease-in duration-300" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+         class="absolute inset-0 z-50 flex flex-col items-center justify-center p-4">
+        <div class="absolute top-6 right-6">
+            <button @click="toggleTheme()" class="p-3 rounded-2xl bg-white/60 dark:bg-darkcard/60 backdrop-blur-md border border-white/40 dark:border-darkborder shadow-glass hover:scale-105 active:scale-95 transition-all">
+                <i data-lucide="sun" class="w-5 h-5 text-slate-600 hidden dark:block dark:text-slate-300"></i>
+                <i data-lucide="moon" class="w-5 h-5 text-slate-600 block dark:hidden"></i>
+            </button>
+        </div>
+        <div class="w-full max-w-md grid grid-cols-1 grid-rows-1">
+            <!-- LOGIN -->
+            <div x-show="authView === 'login'"
+                 x-transition:enter="transition ease-out duration-500 delay-100" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-300" x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 -translate-y-4"
+                 class="col-start-1 row-start-1 glass-card bg-white/80 dark:bg-darkcard/80 border border-white/50 dark:border-darkborder rounded-[2rem] shadow-glass dark:shadow-glass-dark p-8 sm:p-10">
+                <div class="text-center mb-10">
+                    <div class="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-glow transform -rotate-3 hover:rotate-3 transition-transform duration-500">
+                        <i data-lucide="wallet" class="text-white w-10 h-10 transform rotate-3"></i>
+                    </div>
+                    <h1 class="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">SmartBudget</h1>
+                    <p class="text-slate-500 dark:text-slate-400 mt-2 font-medium">Next-Gen AI Expense Tracker</p>
+                </div>
+                <div class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Email Address</label>
+                        <input x-model="loginForm.email" type="email" required placeholder="hello@SmartBudget.ai" class="w-full bg-white/50 dark:bg-[#0B1120]/50 border border-slate-200 dark:border-darkborder rounded-2xl px-5 py-3.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Password</label>
+                        <input x-model="loginForm.password" type="password" required placeholder="••••••••" @keydown.enter.prevent="login" class="w-full bg-white/50 dark:bg-[#0B1120]/50 border border-slate-200 dark:border-darkborder rounded-2xl px-5 py-3.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all" />
+                    </div>
+                    <div class="pt-4">
+                        <button type="button" @click="login" :disabled="authLoading" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-4 px-4 rounded-2xl transition-all shadow-glow active:scale-[0.98] flex justify-center items-center gap-2 disabled:opacity-70">
+                            <span x-show="!authLoading" class="flex items-center gap-2">Login <i data-lucide="arrow-right" class="w-5 h-5"></i></span>
+                            <span x-show="authLoading" class="flex items-center gap-2"><div class="spinner"></div> Logging in...</span>
+                        </button>
+                    </div>
+                </div>
+                <p class="text-center text-slate-500 dark:text-slate-400 text-sm mt-8 font-medium">Don't have an account? <button @click="authView='signup'" class="text-blue-600 dark:text-blue-400 font-bold hover:underline">Sign up</button></p>
+            </div>
+            <!-- SIGNUP -->
+            <div x-cloak x-show="authView === 'signup'"
+                 x-transition:enter="transition ease-out duration-500 delay-100" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-300" x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 -translate-y-4"
+                 class="col-start-1 row-start-1 glass-card bg-white/80 dark:bg-darkcard/80 border border-white/50 dark:border-darkborder rounded-[2rem] shadow-glass dark:shadow-glass-dark p-8 sm:p-10">
+                <div class="text-center mb-8">
+                    <h1 class="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">Create Account</h1>
+                    <p class="text-slate-500 dark:text-slate-400 mt-2 font-medium">Join SmartBudget to track expenses securely</p>
+                </div>
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Full Name</label>
+                        <input x-model="signupForm.name" type="text" required placeholder="John Doe" class="w-full bg-white/50 dark:bg-[#0B1120]/50 border border-slate-200 dark:border-darkborder rounded-2xl px-5 py-3.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-400" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Email Address</label>
+                        <input x-model="signupForm.email" type="email" required placeholder="hello@example.com" class="w-full bg-white/50 dark:bg-[#0B1120]/50 border border-slate-200 dark:border-darkborder rounded-2xl px-5 py-3.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-400" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Password</label>
+                        <input x-model="signupForm.password" type="password" required placeholder="••••••••" @keydown.enter.prevent="signup" class="w-full bg-white/50 dark:bg-[#0B1120]/50 border border-slate-200 dark:border-darkborder rounded-2xl px-5 py-3.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-slate-400" />
+                    </div>
+                    <div class="pt-3">
+                        <button type="button" @click="signup" :disabled="authLoading" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold py-4 px-4 rounded-2xl transition-all shadow-glow active:scale-[0.98] flex justify-center items-center gap-2 disabled:opacity-70">
+                            <span x-show="!authLoading" class="flex items-center gap-2">Create Account <i data-lucide="user-plus" class="w-5 h-5"></i></span>
+                            <span x-show="authLoading" class="flex items-center gap-2"><div class="spinner"></div> Creating...</span>
+                        </button>
+                    </div>
+                </div>
+                <p class="text-center text-slate-500 dark:text-slate-400 text-sm mt-8 font-medium">Already have an account? <button @click="authView='login'" class="text-blue-600 dark:text-blue-400 font-bold hover:underline">Log in</button></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── ONBOARDING MODAL ── -->
+    <div x-cloak x-show="isAuthenticated && showOnboarding"
+         x-transition:enter="transition ease-out duration-500" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+         class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+        <div class="w-full max-w-lg glass-card bg-white/95 dark:bg-darkcard/95 border border-white/50 dark:border-darkborder rounded-[2rem] shadow-glass-dark p-8 sm:p-10">
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <div class="w-20 h-20 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl mx-auto flex items-center justify-center mb-5 shadow-glow -rotate-3">
+                    <i data-lucide="indian-rupee" class="text-white w-10 h-10 rotate-3"></i>
+                </div>
+                <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Set Your Monthly Budget</h2>
+                <p class="text-slate-500 dark:text-slate-400 mt-2 font-medium">Tell SmartBudget your income so it can track your spending accurately.</p>
+            </div>
+
+            <div class="space-y-5">
+                <!-- Name -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Your Name</label>
+                    <input x-model="onboardingForm.name" type="text" placeholder="What should we call you?"
+                           class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl px-5 py-3.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 font-medium transition-all" />
+                </div>
+
+                <!-- Monthly Income -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                        Monthly Budget / Income <span class="text-rose-500">*</span>
+                    </label>
+                    <div class="relative">
+                        <span class="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">₹</span>
+                        <input x-model="onboardingForm.monthly_budget" type="number" min="1" step="100"
+                               @input="onboardingForm.monthly_budget = $event.target.value"
+                               placeholder="e.g. 50000"
+                               class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl pl-10 pr-5 py-3.5 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 font-bold text-xl transition-all" />
+                    </div>
+                    <p class="text-xs text-slate-400 font-medium mt-1.5 ml-1">This is used to track how much of your income you've spent each month.</p>
+                </div>
+
+                <!-- Saving goal slider -->
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="text-sm font-bold text-slate-700 dark:text-slate-300">Savings Goal</label>
+                        <span class="text-sm font-extrabold text-emerald-600 dark:text-emerald-400" x-text="onboardingForm.saving_pct + '%'"></span>
+                    </div>
+                    <input x-model="onboardingForm.saving_pct" type="range" min="0" max="60" step="5"
+                           class="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none cursor-pointer accent-emerald-500" />
+                    <div class="flex justify-between text-xs text-slate-400 font-medium mt-1">
+                        <span>0%</span><span>30%</span><span>60%</span>
+                    </div>
+                    <!-- Smart preview -->
+                    <div x-show="onboardingForm.monthly_budget > 0"
+                         class="mt-4 p-4 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-2xl">
+                        <p class="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-2">Your Plan</p>
+                        <div class="flex justify-between text-sm font-semibold text-slate-700 dark:text-slate-300">
+                            <span>Monthly budget</span>
+                            <span class="font-extrabold text-slate-900 dark:text-white" x-text="'₹' + Number(onboardingForm.monthly_budget).toLocaleString()"></span>
+                        </div>
+                        <div class="flex justify-between text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1">
+                            <span>Savings target (<span x-text="onboardingForm.saving_pct"></span>%)</span>
+                            <span class="font-extrabold text-emerald-600 dark:text-emerald-400"
+                                  x-text="'₹' + Math.round(onboardingForm.monthly_budget * onboardingForm.saving_pct / 100).toLocaleString()"></span>
+                        </div>
+                        <div class="flex justify-between text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1 pt-2 border-t border-emerald-100 dark:border-emerald-500/20">
+                            <span>Spending limit</span>
+                            <span class="font-extrabold text-blue-600 dark:text-blue-400"
+                                  x-text="'₹' + Math.round(onboardingForm.monthly_budget * (1 - onboardingForm.saving_pct / 100)).toLocaleString()"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button @click="saveOnboardingWithGoal()" :disabled="savingOnboarding || !onboardingForm.monthly_budget"
+                    class="w-full mt-8 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold py-4 rounded-2xl transition-all shadow-glow active:scale-[0.98] flex justify-center items-center gap-2 disabled:opacity-50">
+                <span x-show="!savingOnboarding" class="flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i> Let's Go!</span>
+                <span x-show="savingOnboarding" class="flex items-center gap-2"><div class="spinner"></div> Saving...</span>
+            </button>
+        </div>
+    </div>
+
+
+    <div x-cloak x-show="isAuthenticated"
+         x-transition:enter="transition ease-out duration-700 delay-300" x-transition:enter-start="opacity-0 translate-y-8" x-transition:enter-end="opacity-100 translate-y-0"
+         class="flex-1 flex flex-col lg:flex-row relative z-10 min-h-screen">
+
+        <div x-show="isSidebarOpen" @click="isSidebarOpen=false" x-transition.opacity class="fixed inset-0 bg-slate-900/40 dark:bg-black/60 z-40 lg:hidden backdrop-blur-sm"></div>
+
+        <!-- Sidebar -->
+        <aside :class="isSidebarOpen ? 'translate-x-0 w-[280px]' : '-translate-x-full lg:translate-x-0 lg:w-[105px] w-[280px]'"
+               class="fixed top-0 left-0 h-full bg-white/70 dark:bg-darkcard/70 backdrop-blur-2xl border-r border-white/50 dark:border-darkborder z-50 transform transition-all duration-300 ease-in-out flex flex-col overflow-hidden">
+            <div class="h-20 flex items-center px-8 border-b border-slate-200/50 dark:border-darkborder/50 justify-between lg:justify-start shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-glow">
+                        <i data-lucide="wallet" class="text-white w-5 h-5"></i>
+                    </div>
+                    <span :class="isSidebarOpen ? 'opacity-100' : 'opacity-0 lg:hidden'" class="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white transition-opacity duration-200">SmartBudget</span>
+                </div>
+                <button @click="isSidebarOpen=false" class="lg:hidden p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="flex-1 overflow-y-auto py-6 px-4 space-y-1.5">
+                <p class="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4 px-4">Overview</p>
+                <template x-for="item in navItems" :key="item.id">
+                    <button @click="navigate(item.id)" :title="!isSidebarOpen ? item.label : ''"
+                            :class="[activePage===item.id ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#1A233A] hover:text-slate-900 dark:hover:text-white', !isSidebarOpen ? 'lg:justify-center lg:px-0' : '']"
+                            class="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl transition-all font-semibold group">
+                        <div x-html="getIconSVG(item.icon, activePage===item.id)" class="w-5 h-5 shrink-0 transition-transform group-hover:scale-110"></div>
+                        <span :class="isSidebarOpen ? 'opacity-100' : 'opacity-0 lg:hidden w-0'" class="transition-opacity duration-200 whitespace-nowrap overflow-hidden" x-text="item.label"></span>
+                        <div x-show="activePage===item.id && isSidebarOpen" class="ml-auto w-1.5 h-1.5 rounded-full bg-white"></div>
+                    </button>
+                </template>
+            </div>
+            <div class="p-6 border-t border-slate-200/50 dark:border-darkborder/50 shrink-0">
+                <button @click="logout" :title="'Logout'" class="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-2xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all font-bold group">
+                    <i data-lucide="log-out" class="w-5 h-5 group-hover:-translate-x-1 transition-transform shrink-0"></i>
+                    <span :class="isSidebarOpen ? 'opacity-100' : 'opacity-0 lg:hidden w-0'" class="transition-opacity duration-200 overflow-hidden whitespace-nowrap">Logout</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <div :class="isSidebarOpen ? 'lg:ml-[280px]' : 'lg:ml-[105px]'" class="flex flex-col flex-1 w-full min-h-screen transition-all duration-300">
+            <header class="h-20 bg-white/60 dark:bg-darkcard/60 backdrop-blur-2xl border-b border-white/40 dark:border-darkborder/50 flex items-center justify-between px-6 sm:px-10 sticky top-0 z-30 shadow-sm">
+                <div class="flex items-center gap-4">
+                    <button @click="isSidebarOpen=!isSidebarOpen" class="p-2 -ml-2 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors">
+                        <i :data-lucide="isSidebarOpen ? 'panel-left-close' : 'panel-left-open'" class="w-6 h-6"></i>
+                    </button>
+                    <h2 class="text-2xl font-extrabold text-slate-900 dark:text-white capitalize hidden sm:block tracking-tight" x-text="activePageTitle"></h2>
+                </div>
+                <div class="flex items-center gap-3 sm:gap-6">
+                    <button @click="toggleTheme()" class="p-2.5 text-slate-500 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all shadow-sm border border-transparent hover:border-slate-200 dark:hover:border-darkborder">
+                        <i data-lucide="sun" class="w-5 h-5 hidden dark:block text-amber-400"></i>
+                        <i data-lucide="moon" class="w-5 h-5 block dark:hidden text-indigo-500"></i>
+                    </button>
+                    <button class="p-2.5 text-slate-500 hover:bg-white dark:hover:bg-slate-800 rounded-xl transition-all relative">
+                        <i data-lucide="bell" class="w-5 h-5"></i>
+                        <span class="absolute top-2 right-2.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white dark:border-darkcard"></span>
+                    </button>
+                    <div class="h-8 w-px bg-slate-200 dark:bg-darkborder mx-1"></div>
+                    <button class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                        <div class="hidden sm:block text-left">
+                            <p class="text-sm font-bold text-slate-900 dark:text-white leading-tight" x-text="currentUser.name||'User'"></p>
+                        </div>
+                    </button>
+                </div>
+            </header>
+
+            <main class="flex-1 p-4 sm:p-8 lg:p-10 overflow-x-hidden">
+                <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white capitalize sm:hidden mb-8 tracking-tight" x-text="activePageTitle"></h2>
+
+                <!-- ── 1. DASHBOARD ── -->
+                <div x-show="activePage==='dashboard'"
+                     x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0"
+                     class="space-y-8" :class="activePage==='dashboard'?'':'hidden'">
+                    <div x-show="dashLoading" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                        <template x-for="i in 4"><div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-3xl p-6 border border-white/50 dark:border-darkborder/50 h-28 animate-pulse"></div></template>
+                    </div>
+                    <div x-show="!dashLoading" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                        <template x-for="(stat,index) in stats" :key="index">
+                            <div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-3xl p-6 border border-white/50 dark:border-darkborder/50 flex items-center gap-5">
+                                <div :class="stat.bgClass" class="p-4 rounded-2xl shadow-sm" x-html="stat.iconHtml"></div>
+                                <div>
+                                    <p class="text-sm text-slate-500 dark:text-slate-400 font-bold mb-1" x-text="stat.title"></p>
+                                    <h3 class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight" x-text="stat.value"></h3>
+                                    <p :class="stat.trendColor" class="text-xs font-bold flex items-center mt-1.5 gap-1"><span x-html="stat.trendIcon"></span><span x-text="stat.trendText"></span></p>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <div x-show="!dashLoading" class="grid grid-cols-1 xl:grid-cols-5 gap-6">
+                        <div class="xl:col-span-2 glass-card bg-white/70 dark:bg-darkcard/70 rounded-3xl p-6 border border-white/50 dark:border-darkborder/50">
+                            <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-6">Category Split</h3>
+                            <div class="relative h-64 w-full flex justify-center"><canvas id="dashPieChart"></canvas></div>
+                        </div>
+                        <div class="xl:col-span-3 glass-card bg-white/70 dark:bg-darkcard/70 rounded-3xl p-6 border border-white/50 dark:border-darkborder/50">
+                            <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-6">Cashflow Trend</h3>
+                            <div class="relative h-64 w-full"><canvas id="dashLineChart"></canvas></div>
+                        </div>
+                    </div>
+                    <div x-show="!dashLoading" class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-3xl border border-white/50 dark:border-darkborder/50 overflow-hidden">
+                        <div class="p-6 border-b border-slate-200/50 dark:border-darkborder/50 flex justify-between items-center">
+                            <h3 class="text-xl font-bold text-slate-900 dark:text-white">Recent Transactions</h3>
+                            <button @click="navigate('history')" class="text-sm text-blue-600 dark:text-blue-400 font-bold hover:underline">View All</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead><tr class="text-slate-500 dark:text-slate-400 text-xs uppercase tracking-widest bg-slate-50/50 dark:bg-darkcard/30">
+                                    <th class="px-6 py-4 font-bold border-b border-slate-200/50 dark:border-darkborder/50">Date</th>
+                                    <th class="px-6 py-4 font-bold border-b border-slate-200/50 dark:border-darkborder/50">Details</th>
+                                    <th class="px-6 py-4 font-bold border-b border-slate-200/50 dark:border-darkborder/50">Category</th>
+                                    <th class="px-6 py-4 font-bold border-b border-slate-200/50 dark:border-darkborder/50 text-right">Amount</th>
+                                </tr></thead>
+                                <tbody class="divide-y divide-slate-100/50 dark:divide-darkborder/50">
+                                    <template x-for="(t,idx) in transactions.slice(0,5)" :key="idx">
+                                        <tr class="hover:bg-white dark:hover:bg-[#1A233A] transition-colors cursor-pointer">
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-500 dark:text-slate-400" x-text="t.date"></td>
+                                            <td class="px-6 py-4"><p class="text-sm font-bold text-slate-900 dark:text-white" x-text="t.description"></p></td>
+                                            <td class="px-6 py-4"><span class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300" x-text="t.category"></span></td>
+                                            <td class="px-6 py-4 text-right text-sm font-extrabold text-slate-900 dark:text-white" x-text="'₹'+t.amount.toLocaleString()"></td>
+                                        </tr>
+                                    </template>
+                                    <tr x-show="transactions.length===0"><td colspan="4" class="px-6 py-12 text-center text-slate-400 font-medium">No transactions yet. <button @click="navigate('add-expense')" class="text-blue-500 font-bold hover:underline">Add one →</button></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── 2. ADD EXPENSE ── -->
+                <div x-show="activePage==='add-expense'"
+                     x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0"
+                     class="max-w-3xl mx-auto" :class="activePage==='add-expense'?'':'hidden'">
+                    <div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-[2.5rem] p-8 sm:p-12 border border-white/50 dark:border-darkborder/50">
+                        <div class="mb-10 text-center">
+                            <div class="w-16 h-16 bg-blue-100 dark:bg-blue-500/10 rounded-2xl mx-auto flex items-center justify-center mb-4"><i data-lucide="plus" class="w-8 h-8 text-blue-600 dark:text-blue-400"></i></div>
+                            <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white">Record Transaction</h2>
+                            <p class="text-slate-500 dark:text-slate-400 mt-2 font-medium">Log a new expense or let AI auto-categorize it.</p>
+                        </div>
+                        <div class="space-y-6">
+                            <div>
+                                <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Description</label>
+                                <div class="relative">
+                                    <input x-model="expenseForm.description" required type="text" @blur="autoDetectCategory()" placeholder="e.g. Saturday Night Dinner"
+                                           class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl px-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 shadow-sm transition-all placeholder:text-slate-400 font-medium" />
+                                    <div x-show="detectingCategory" class="absolute right-4 top-1/2 -translate-y-1/2"><div class="spinner spinner-blue !border-blue-200 !border-t-blue-500"></div></div>
+                                </div>
+                                <p x-show="expenseForm.detectedCategory" class="text-xs text-blue-500 font-bold mt-1.5 ml-1">✨ AI detected: <span x-text="expenseForm.detectedCategory"></span></p>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Amount (₹)</label>
+                                    <div class="relative">
+                                        <span class="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₹</span>
+                                        <input x-model="expenseForm.amount" required type="number" min="1" step="0.01" placeholder="0.00"
+                                               class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl pl-10 pr-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 shadow-sm transition-all font-bold text-lg" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Date</label>
+                                    <input x-model="expenseForm.date" required type="date"
+                                           class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl px-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 shadow-sm transition-all font-medium" />
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Category</label>
+                                    <select x-model="expenseForm.category" class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl px-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 shadow-sm font-medium appearance-none">
+                                        <option value="">✨ AI Auto-Detect</option>
+                                        <option>Food</option><option>Groceries</option><option>Transport</option>
+                                        <option>Shopping</option><option>Utilities</option><option>Entertainment</option>
+                                        <option>Health</option><option>Travel</option><option>Education</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Method</label>
+                                    <select x-model="expenseForm.method" class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl px-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 shadow-sm font-medium appearance-none">
+                                        <option>UPI</option><option>Credit Card</option><option>Debit Card</option><option>Cash</option><option>Net Banking</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button type="button" @click="submitExpense" :disabled="isSubmittingExpense" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-4 rounded-2xl transition-all shadow-glow flex justify-center items-center mt-8 active:scale-[0.98] disabled:opacity-70">
+                                <span x-show="!isSubmittingExpense" class="flex items-center gap-2"><i data-lucide="check-circle" class="w-5 h-5"></i> Add Transaction</span>
+                                <span x-show="isSubmittingExpense" class="flex items-center gap-2"><div class="spinner"></div> Analyzing with AI...</span>
+                            </button>
+                        </div>
+                        <div x-show="showExpenseSuccess"
+                             x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                             class="mt-8 p-6 bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-500/10 dark:to-emerald-500/5 border border-emerald-200 dark:border-emerald-500/20 rounded-2xl flex items-start gap-4">
+                            <div class="p-2 bg-emerald-500 text-white rounded-xl"><i data-lucide="check" class="w-5 h-5"></i></div>
+                            <div>
+                                <h4 class="text-base font-extrabold text-emerald-800 dark:text-emerald-400">Expense Added & Categorized!</h4>
+                                <p class="text-sm text-emerald-600 dark:text-emerald-500/80 mt-1 font-semibold">AI classified this as: <span class="font-extrabold px-2.5 py-1 bg-white/50 dark:bg-emerald-500/20 rounded-lg ml-1 text-emerald-700 dark:text-emerald-300" x-text="expenseForm.detectedCategory||expenseForm.category||'Other'"></span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── 3. HISTORY ── -->
+                <div x-show="activePage==='history'" class="h-full" :class="activePage==='history'?'':'hidden'">
+                    <div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-3xl border border-white/50 dark:border-darkborder/50 overflow-hidden flex flex-col h-[calc(100vh-140px)]">
+                        <div class="p-6 border-b border-slate-200/50 dark:border-darkborder/50 flex flex-col lg:flex-row justify-between items-center gap-4 bg-white/40 dark:bg-[#121A2F]/40 shrink-0">
+                            <h3 class="text-2xl font-extrabold text-slate-900 dark:text-white shrink-0">All Transactions</h3>
+                            <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                                <div class="relative w-full sm:w-64">
+                                    <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                                    <input x-model="historySearch" type="text" placeholder="Search description..." class="w-full bg-white dark:bg-[#090E17]/60 border border-slate-200 dark:border-darkborder rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/50 font-medium dark:text-white shadow-sm transition-all" />
+                                </div>
+                                <button @click="showFilters = !showFilters" :class="showFilters || historyFilterCategory || historyFilterDateFrom || historyFilterMinAmount || historyFilterMaxAmount ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/30' : 'bg-white dark:bg-[#090E17]/60 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-darkborder'" class="px-5 py-2.5 border rounded-xl text-sm font-bold hover:shadow-md transition-all flex items-center justify-center gap-2 shrink-0">
+                                    <i data-lucide="sliders-horizontal" class="w-4 h-4"></i> Filters
+                                    <span x-show="historyFilterCategory || historyFilterDateFrom || historyFilterDateTo || historyFilterMinAmount || historyFilterMaxAmount" class="flex h-2 w-2 relative ml-1"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div x-show="showFilters" x-transition.opacity class="bg-slate-50/50 dark:bg-[#0B1120]/40 border-b border-slate-200/50 dark:border-darkborder/50 p-6 shrink-0">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Category</label>
+                                    <select x-model="historyFilterCategory" class="w-full bg-white dark:bg-[#121A2F] border border-slate-200 dark:border-darkborder rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/50 font-medium text-slate-900 dark:text-white shadow-sm appearance-none">
+                                        <option value="">All Categories</option>
+                                        <option>Food &amp; Dining</option><option>Transport</option><option>Shopping</option>
+                                        <option>Utilities</option><option>Health</option><option>Entertainment</option>
+                                        <option>Education</option><option>Travel</option><option>Personal Care</option>
+                                        <option>Electronics</option><option>Other</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Date Range</label>
+                                    <div class="flex items-center gap-2">
+                                        <input x-model="historyFilterDateFrom" type="date" class="w-full bg-white dark:bg-[#121A2F] border border-slate-200 dark:border-darkborder rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/50 font-medium text-slate-900 dark:text-white shadow-sm" />
+                                        <span class="text-slate-400 font-bold text-xs">TO</span>
+                                        <input x-model="historyFilterDateTo" type="date" class="w-full bg-white dark:bg-[#121A2F] border border-slate-200 dark:border-darkborder rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/50 font-medium text-slate-900 dark:text-white shadow-sm" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">Amount Range (₹)</label>
+                                    <div class="flex items-center gap-2">
+                                        <input x-model="historyFilterMinAmount" type="number" min="0" placeholder="Min" class="w-full bg-white dark:bg-[#121A2F] border border-slate-200 dark:border-darkborder rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/50 font-medium text-slate-900 dark:text-white shadow-sm" />
+                                        <span class="text-slate-400 font-bold text-xs">-</span>
+                                        <input x-model="historyFilterMaxAmount" type="number" min="0" placeholder="Max" class="w-full bg-white dark:bg-[#121A2F] border border-slate-200 dark:border-darkborder rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/50 font-medium text-slate-900 dark:text-white shadow-sm" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex justify-end mt-5">
+                                <button @click="clearHistoryFilters" class="text-xs font-bold text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 transition-colors flex items-center gap-1.5">
+                                    <i data-lucide="x-circle" class="w-4 h-4"></i> Clear All Filters
+                                </button>
+                            </div>
+                        </div>
+                        <div class="overflow-y-auto flex-1">
+                            <div x-show="historyLoading" class="flex items-center justify-center h-48"><div class="spinner spinner-blue !w-8 !h-8 !border-4"></div></div>
+                            <table x-show="!historyLoading" class="w-full text-left border-collapse">
+                                <thead class="sticky top-0 bg-slate-100/90 dark:bg-darkcard/90 backdrop-blur-md z-10">
+                                    <tr class="text-slate-500 dark:text-slate-400 text-xs uppercase tracking-widest font-bold">
+                                        <th class="p-5 border-b border-slate-200/50 dark:border-darkborder">Date</th>
+                                        <th class="p-5 border-b border-slate-200/50 dark:border-darkborder">Description</th>
+                                        <th class="p-5 border-b border-slate-200/50 dark:border-darkborder">Category</th>
+                                        <th class="p-5 border-b border-slate-200/50 dark:border-darkborder text-right">Amount</th>
+                                        <th class="p-5 border-b border-slate-200/50 dark:border-darkborder text-center">Del</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100/50 dark:divide-darkborder/50">
+                                    <template x-for="t in filteredTransactions" :key="t.id">
+                                        <tr class="hover:bg-white dark:hover:bg-[#1A233A] transition-colors">
+                                            <td class="p-5 text-sm font-semibold text-slate-500 dark:text-slate-400" x-text="t.date"></td>
+                                            <td class="p-5 text-sm font-bold text-slate-900 dark:text-white" x-text="t.description"></td>
+                                            <td class="p-5"><span class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300" x-text="t.category"></span></td>
+                                            <td class="p-5 text-right text-sm font-extrabold text-slate-900 dark:text-white" x-text="'₹'+t.amount.toLocaleString()"></td>
+                                            <td class="p-5 text-center"><button @click="deleteExpense(t.id)" class="text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 p-2 rounded-xl transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td>
+                                        </tr>
+                                    </template>
+                                    <tr x-show="filteredTransactions.length===0&&!historyLoading"><td colspan="5" class="p-12 text-center text-slate-400 font-medium">No transactions found.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── 4. ANALYTICS ── -->
+                <div x-show="activePage==='analytics'" class="space-y-6" :class="activePage==='analytics'?'':'hidden'">
+                    <div class="glass-card bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 rounded-3xl p-8 text-white shadow-glow">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="p-2.5 bg-white/20 rounded-xl backdrop-blur-md"><i data-lucide="sparkles" class="w-6 h-6"></i></div>
+                            <h3 class="text-3xl font-extrabold tracking-tight">AI Insights</h3>
+                        </div>
+                        <div x-show="analyticsLoading" class="text-white/70 font-medium animate-pulse">Loading AI insights...</div>
+                        <div x-show="!analyticsLoading" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <template x-for="(insight,i) in aiInsights" :key="i">
+                                <div :class="{
+                                        'border-red-400/30 bg-red-500/10':    insight.type==='warning',
+                                        'border-emerald-400/30 bg-emerald-500/10': insight.type==='success',
+                                        'border-blue-400/20 bg-white/5':      insight.type==='info'
+                                     }"
+                                     class="rounded-2xl p-5 border backdrop-blur-md hover:bg-white/10 transition-colors">
+                                    <h4 class="font-bold flex items-center gap-2 text-sm mb-2"
+                                        :class="{
+                                            'text-red-300':     insight.type==='warning',
+                                            'text-emerald-300': insight.type==='success',
+                                            'text-blue-200':    insight.type==='info'
+                                        }">
+                                        <span x-text="insight.type==='warning' ? '⚠️' : insight.type==='success' ? '✅' : '💡'"></span>
+                                        <span x-text="insight.type==='warning' ? 'Alert' : insight.type==='success' ? 'Win' : 'Insight'"></span>
+                                    </h4>
+                                    <p class="text-sm text-white/85 font-medium leading-relaxed" x-text="insight.message"></p>
+                                </div>
+                            </template>
+                            <div x-show="aiInsights.length===0" class="col-span-2 text-white/60 font-medium text-sm">
+                                Add expenses to unlock AI insights.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-3xl p-6 border border-white/50 dark:border-darkborder/50">
+                            <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-6">Monthly Burn Rate</h3>
+                            <div class="relative h-72 w-full"><canvas id="analyticsBarChart"></canvas></div>
+                        </div>
+                        <div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-3xl p-6 border border-white/50 dark:border-darkborder/50">
+                            <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-6">Weekly Trend</h3>
+                            <div class="relative h-72 w-full"><canvas id="analyticsLineChart"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── 5. BUDGET ── -->
+                <div x-show="activePage==='budget'" class="space-y-6" :class="activePage==='budget'?'':'hidden'">
+                    <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white">Budget Controls</h2>
+                    <div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-3xl p-6 border border-white/50 dark:border-darkborder/50">
+                        <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-4">Set New Budget</h3>
+                        <div class="flex flex-wrap gap-4 items-end">
+                            <div class="flex-1 min-w-40">
+                                <label class="block text-xs font-bold text-slate-500 mb-1.5">Category</label>
+                                <select x-model="budgetForm.category" required class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-medium text-sm">
+                                    <option value="" disabled selected>Select category…</option>
+                                    <option>Food &amp; Dining</option>
+                                    <option>Transport</option>
+                                    <option>Shopping</option>
+                                    <option>Utilities</option>
+                                    <option>Health</option>
+                                    <option>Entertainment</option>
+                                    <option>Education</option>
+                                    <option>Travel</option>
+                                    <option>Personal Care</option>
+                                    <option>Electronics</option>
+                                    <option>Other</option>
+                                </select>
+                            </div>
+                            <div class="flex-1 min-w-40">
+                                <label class="block text-xs font-bold text-slate-500 mb-1.5">Monthly Limit (₹)</label>
+                                <input x-model="budgetForm.limit_amt" required type="number" min="1" placeholder="5000" class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-medium text-sm" />
+                            </div>
+                            <button type="button" @click="setBudget" :disabled="settingBudget" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-2xl transition-all flex items-center gap-2 disabled:opacity-70">
+                                <span x-show="!settingBudget">Set Budget</span>
+                                <span x-show="settingBudget" class="flex items-center gap-2"><div class="spinner"></div> Saving...</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div x-show="budgetLoading" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        <template x-for="i in 3"><div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-3xl p-6 border border-white/50 dark:border-darkborder/50 h-40 animate-pulse"></div></template>
+                    </div>
+                    <div x-show="!budgetLoading" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        <template x-for="b in budgets" :key="b.id">
+                            <div :class="b.pct>=100?'border-rose-400/60 dark:border-rose-500/40':b.pct>=80?'border-amber-400/60 dark:border-amber-500/40':'border-white/50 dark:border-darkborder/50'"
+                                 class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-3xl p-6 border-2 relative overflow-hidden">
+                                <!-- Alert banner -->
+                                <div x-show="b.pct>=80" :class="b.pct>=100?'bg-rose-500/10 text-rose-400':'bg-amber-500/10 text-amber-400'"
+                                     class="absolute top-0 left-0 right-0 text-xs font-bold px-4 py-1 text-center"
+                                     x-text="b.pct>=100?'🚨 OVER BUDGET':'⚠️ BUDGET WARNING'"></div>
+                                <div :class="b.pct>=80?'mt-5':'mt-0'" class="flex justify-between items-center mb-4">
+                                    <h3 class="font-extrabold text-lg text-slate-900 dark:text-white" x-text="b.category"></h3>
+                                    <span :class="b.pct>=100?'bg-rose-500/10 text-rose-400 border-rose-500/20':b.pct>=80?'bg-amber-500/10 text-amber-400 border-amber-500/20':'bg-blue-500/10 text-blue-400 border-blue-500/20'"
+                                          class="text-xs font-bold px-2.5 py-1 rounded-lg border" x-text="b.pct+'%'"></span>
+                                </div>
+                                <div class="flex items-end gap-1 mb-4">
+                                    <span class="text-3xl font-extrabold text-slate-900 dark:text-white" x-text="'₹'+(b.spent||0).toLocaleString()"></span>
+                                    <span class="text-sm font-bold text-slate-400" x-text="'/ ₹'+b.limit_amt.toLocaleString()"></span>
+                                </div>
+                                <div class="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-3 mb-2 shadow-inner overflow-hidden">
+                                    <div :class="b.pct>=100?'bg-gradient-to-r from-rose-500 to-red-500':b.pct>=80?'bg-gradient-to-r from-amber-400 to-orange-500':'bg-gradient-to-r from-blue-500 to-indigo-500'"
+                                         class="h-3 rounded-full transition-all duration-700" :style="`width:${Math.min(b.pct,100)}%`"></div>
+                                </div>
+                                <p :class="b.pct>=100?'text-rose-400':b.pct>=80?'text-amber-400':'text-slate-400'"
+                                   class="text-xs font-semibold mt-1"
+                                   x-text="b.pct>=100?'⚠ ₹'+(b.spent-b.limit_amt).toLocaleString()+' over limit!':b.pct>=80?'Only ₹'+(b.limit_amt-b.spent).toLocaleString()+' left — spend carefully':'₹'+(b.limit_amt-b.spent).toLocaleString()+' remaining'"></p>
+                            </div>
+                        </template>
+                        <div x-show="budgets.length===0" class="col-span-3 text-center py-16 text-slate-400 font-medium">No budgets set yet.</div>
+                    </div>
+                </div>
+
+                <!-- ── 6. RECOMMENDATIONS ── -->
+                <div x-show="activePage==='recommendations'" class="space-y-6" :class="activePage==='recommendations'?'':'hidden'"
+                     x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0">
+                    <div class="mb-4">
+                        <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-3">
+                            <div class="p-2.5 bg-amber-100 dark:bg-amber-500/10 rounded-xl"><i data-lucide="zap" class="text-amber-500 w-6 h-6"></i></div> AI Deals & Alternatives
+                        </h2>
+                        <p class="text-slate-500 dark:text-slate-400 mt-2 font-medium">Search for a product and AI finds cheaper alternatives within your budget.</p>
+
+                        <!-- Search bar -->
+                        <div class="mt-6 flex flex-col sm:flex-row gap-4">
+                            <div class="relative flex-1">
+                                <i data-lucide="search" class="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+                                <input x-model="recSearchQuery" @keydown.enter="searchRecommendations()" type="text"
+                                       placeholder="What are you planning to buy? (e.g. Wireless Mouse)"
+                                       class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl pl-12 pr-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 shadow-sm font-medium" />
+                            </div>
+                            <button @click="searchRecommendations()" :disabled="isSearchingRecs" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-4 px-8 rounded-2xl transition-all shadow-glow active:scale-[0.98] flex justify-center items-center gap-2 disabled:opacity-70">
+                                <span x-show="!isSearchingRecs" class="flex items-center gap-2"><i data-lucide="sparkles" class="w-5 h-5"></i> Find Deals</span>
+                                <span x-show="isSearchingRecs" class="flex items-center gap-2"><div class="spinner"></div> Searching...</span>
+                            </button>
+                        </div>
+
+                        <!-- Price range override -->
+                        <div class="mt-4 flex flex-wrap items-center gap-3">
+                            <div class="flex items-center gap-2 bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl px-4 py-2.5 shadow-sm">
+                                <span class="text-sm font-bold text-slate-500">Min:</span>
+                                <span class="text-slate-400 font-bold">₹</span>
+                                <input x-model="recManualMin" type="number" min="0" placeholder="auto"
+                                       class="w-24 bg-transparent text-slate-900 dark:text-white font-bold text-sm focus:outline-none placeholder:text-slate-400" />
+                                <button x-show="recManualMin" @click="recManualMin=''" class="text-slate-400 hover:text-slate-600 text-xs font-bold">✕</button>
+                            </div>
+                            <span class="text-slate-400 font-bold text-lg">–</span>
+                            <div class="flex items-center gap-2 bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl px-4 py-2.5 shadow-sm">
+                                <span class="text-sm font-bold text-slate-500">Max:</span>
+                                <span class="text-slate-400 font-bold">₹</span>
+                                <input x-model="recManualBudget" type="number" min="1" placeholder="auto"
+                                       class="w-24 bg-transparent text-slate-900 dark:text-white font-bold text-sm focus:outline-none placeholder:text-slate-400" />
+                                <button x-show="recManualBudget" @click="recManualBudget=''" class="text-slate-400 hover:text-slate-600 text-xs font-bold">✕</button>
+                            </div>
+                            <button @click="recManualMin=''; recManualBudget=''" x-show="recManualMin||recManualBudget"
+                                    class="text-xs font-semibold text-slate-400 hover:text-slate-600 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+                                Reset to auto
+                            </button>
+                            <span x-show="!recManualMin && !recManualBudget" class="text-xs text-slate-400 font-medium">Leave blank to auto-detect from your budget</span>
+                        </div>
+
+                        <!-- Budget context pill -->
+                        <div x-show="recBudgetContext" class="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 rounded-full text-sm font-semibold text-blue-700 dark:text-blue-300">
+                            <i data-lucide="wallet" class="w-4 h-4"></i>
+                            <span x-text="recBudgetContext"></span>
+                        </div>
+                    </div>
+
+                    <!-- Loading state -->
+                    <div x-show="isSearchingRecs" class="py-20 flex flex-col items-center justify-center text-center">
+                        <div class="w-16 h-16 bg-blue-100 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center mb-6 shadow-glow animate-pulse">
+                            <i data-lucide="bot" class="w-8 h-8 text-blue-600 dark:text-blue-400"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-2">Scanning Amazon, Flipkart, Snapdeal & Meesho...</h3>
+                        <p class="text-slate-500 dark:text-slate-400 font-medium max-w-md">AI is cross-referencing your budget with live listings to find the best deals.</p>
+                    </div>
+
+                    <!-- Product grid -->
+                    <div x-show="!isSearchingRecs" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        <template x-for="prod in displayedRecs" :key="prod.id||prod.name">
+                            <div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-3xl p-0 border border-white/50 dark:border-darkborder/50 overflow-hidden flex flex-col group shadow-sm">
+                                <div class="h-48 w-full relative overflow-hidden bg-slate-200 dark:bg-slate-800">
+                                    <img :src="prod.image||prod.img||'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?auto=format&fit=crop&w=400&q=80'"
+                                         :alt="prod.name" class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700"
+                                         @error="$el.src='https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?auto=format&fit=crop&w=400&q=80'" />
+                                    <div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+                                    <div class="absolute bottom-4 left-5 text-white pr-4">
+                                        <div class="text-[10px] font-extrabold px-2.5 py-1 bg-white/20 backdrop-blur-md rounded-lg inline-block mb-1 uppercase tracking-widest" x-text="prod.source||prod.category||'Product'"></div>
+                                        <h3 class="text-base font-extrabold line-clamp-2 drop-shadow-md leading-tight" x-text="prod.name"></h3>
+                                    </div>
+                                </div>
+                                <div class="p-5 flex-1 flex flex-col gap-3">
+                                    <!-- Price vs budget -->
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-2xl font-black text-slate-900 dark:text-white" x-text="'₹'+Math.round(prod.price||0).toLocaleString()"></span>
+                                        <span x-show="prod.savings>0" class="text-xs font-extrabold px-2.5 py-1.5 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-xl" x-text="'Save ₹'+Math.round(prod.savings||0).toLocaleString()"></span>
+                                    </div>
+                                    <!-- Reason / context -->
+                                    <p x-show="prod.reason" class="text-xs font-semibold text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2" x-text="prod.reason"></p>
+                                    <!-- Rating -->
+                                    <div x-show="prod.rating>0" class="flex items-center gap-1.5 text-xs font-bold text-amber-500">
+                                        <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400 text-amber-400"></i>
+                                        <span x-text="prod.rating.toFixed(1)"></span>
+                                        <span class="text-slate-400 font-medium">/ 5</span>
+                                    </div>
+                                    <div x-show="prod.brand" class="text-xs font-semibold text-slate-400" x-text="'by '+prod.brand"></div>
+                                    <a :href="prod.url||'#'" target="_blank"
+                                       class="mt-auto w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-3.5 rounded-2xl transition-all shadow-md active:scale-[0.98] flex items-center justify-center gap-2 text-sm">
+                                        <i data-lucide="shopping-cart" class="w-4 h-4"></i> View on <span x-text="prod.source||'Store'" class="capitalize"></span>
+                                    </a>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="displayedRecs.length===0&&!isSearchingRecs" class="col-span-3 text-center py-20 text-slate-400">
+                            <div class="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4"><i data-lucide="search" class="w-8 h-8 text-slate-400"></i></div>
+                            <p class="font-bold text-lg text-slate-600 dark:text-slate-300 mb-1">Search for a product above</p>
+                            <p class="font-medium text-sm">AI will find the best deals across major Indian shopping platforms.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── 7. AI ASSISTANT ── -->
+                <div x-show="activePage==='ai-assistant'" class="h-full" :class="activePage==='ai-assistant'?'':'hidden'">
+                    <div class="glass-card bg-white/80 dark:bg-darkcard/80 rounded-3xl border border-white/50 dark:border-darkborder/50 flex flex-col h-[calc(100vh-140px)] overflow-hidden">
+                        <div class="p-5 border-b border-slate-200/50 dark:border-darkborder/50 bg-white/40 dark:bg-[#121A2F]/40 flex items-center justify-between">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-glow relative">
+                                    <i data-lucide="bot" class="w-6 h-6"></i>
+                                    <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-darkcard rounded-full"></span>
+                                </div>
+                                <div>
+                                    <h3 class="font-extrabold text-lg text-slate-900 dark:text-white">SmartBudget AI Core</h3>
+                                    <p class="text-xs text-emerald-500 font-bold tracking-widest uppercase">Powered by Gemini</p>
+                                </div>
+                            </div>
+                            <button @click="clearChatSession()" class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-semibold px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">Clear chat</button>
+                        </div>
+                        <div class="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50 dark:bg-[#090E17]/40" id="chat-container">
+                            <template x-for="msg in chatHistory" :key="msg.id">
+                                <div class="flex" :class="msg.sender==='user'?'justify-end':'justify-start'">
+                                    <template x-if="msg.sender==='bot'">
+                                        <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white mr-3 shrink-0 shadow-md"><i data-lucide="bot" class="w-4 h-4"></i></div>
+                                    </template>
+                                    <div class="max-w-[80%] md:max-w-[70%] p-4 rounded-2xl text-sm font-medium leading-relaxed shadow-sm"
+                                         :class="msg.sender==='user'?'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-br-sm':'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-bl-sm'"
+                                         x-html="msg.text"></div>
+                                </div>
+                            </template>
+                            <div x-show="chatTyping" class="flex justify-start">
+                                <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white mr-3 shrink-0"><i data-lucide="bot" class="w-4 h-4"></i></div>
+                                <div class="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl rounded-bl-sm px-5 py-3 flex items-center gap-1.5">
+                                    <span class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay:0s"></span>
+                                    <span class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay:0.15s"></span>
+                                    <span class="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style="animation-delay:0.3s"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div x-show="chatStarters.length>0" class="px-5 pt-3 pb-2 bg-white/40 dark:bg-darkcard/40 border-t border-slate-200/50 dark:border-darkborder/50">
+                            <p class="text-xs font-bold text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">Suggested questions</p>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="s in chatStarters" :key="s">
+                                    <button @click="sendChatMessage(s)" class="text-xs font-semibold px-3 py-1.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-500/20 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-all" x-text="s"></button>
+                                </template>
+                            </div>
+                        </div>
+                        <div class="p-5 bg-white/60 dark:bg-darkcard/60 border-t border-slate-200/50 dark:border-darkborder/50">
+                            <div class="relative flex items-center">
+                                <input x-model="chatInput" type="text" placeholder="Ask about spending, tips, or budgets..." :disabled="chatTyping" @keydown.enter.prevent="sendChatMessage(chatInput)"
+                                       class="w-full bg-white dark:bg-[#090E17] border border-slate-200 dark:border-darkborder rounded-full pl-6 pr-14 py-4 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 shadow-sm font-medium disabled:opacity-60" />
+                                <button type="button" @click="sendChatMessage(chatInput)" :disabled="chatTyping||!chatInput.trim()" class="absolute right-2 w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-all shadow-glow active:scale-95 disabled:opacity-50">
+                                    <i data-lucide="send" class="w-4 h-4 ml-0.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── 8. SETTINGS ── -->
+                <div x-show="activePage==='settings'" class="max-w-4xl mx-auto space-y-8 pb-12" :class="activePage==='settings'?'':'hidden'"
+                     x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0">
+                    <div class="mb-8">
+                        <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white">Account Settings</h2>
+                        <p class="text-slate-500 dark:text-slate-400 mt-2 font-medium">Manage your profile, preferences, and data security.</p>
+                    </div>
+                    <div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-[2.5rem] p-8 sm:p-10 border border-white/50 dark:border-darkborder/50">
+                        <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-8 flex items-center gap-3 border-b border-slate-200/50 dark:border-darkborder/50 pb-5">
+                            <div class="p-2 bg-emerald-100 dark:bg-emerald-500/10 rounded-lg"><i data-lucide="indian-rupee" class="text-emerald-500 w-5 h-5"></i></div>
+                            Monthly Budget
+                        </h3>
+                        <div class="flex flex-col sm:flex-row gap-6 items-start sm:items-end">
+                            <div class="flex-1">
+                                <label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Spending Limit per Month</label>
+                                <div class="relative">
+                                    <span class="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₹</span>
+                                    <input x-model="settingsBudget" type="number" min="1" :placeholder="currentUser.budget||'Enter budget'"
+                                           class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl pl-10 pr-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 font-bold text-lg shadow-sm transition-all" />
+                                </div>
+                                <p class="text-xs text-slate-400 font-medium mt-1.5 ml-1">Currently: <span class="font-bold text-slate-600 dark:text-slate-300" x-text="currentUser.budget ? '₹' + currentUser.budget.toLocaleString() + ' / month' : 'Not set'"></span></p>
+                            </div>
+                            <button @click="updateMonthlyBudget()" :disabled="savingBudgetSettings"
+                                    class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-8 py-4 rounded-2xl transition-all flex items-center gap-2 shadow-sm active:scale-[0.98] disabled:opacity-70 whitespace-nowrap">
+                                <span x-show="!savingBudgetSettings" class="flex items-center gap-2"><i data-lucide="save" class="w-5 h-5"></i> Update Budget</span>
+                                <span x-show="savingBudgetSettings" class="flex items-center gap-2"><div class="spinner"></div> Saving...</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-[2.5rem] p-8 sm:p-10 border border-white/50 dark:border-darkborder/50">
+                        <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-8 flex items-center gap-3 border-b border-slate-200/50 dark:border-darkborder/50 pb-5"><div class="p-2 bg-blue-100 dark:bg-blue-500/10 rounded-lg"><i data-lucide="user" class="text-blue-500 w-5 h-5"></i></div> Profile Information</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div><label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Full Name</label><input x-model="currentUser.name" type="text" class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl px-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-medium shadow-sm" /></div>
+                            <div><label class="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Email Address</label><input x-model="currentUser.email" type="email" class="w-full bg-white dark:bg-[#0B1120]/60 border border-slate-200 dark:border-darkborder rounded-2xl px-5 py-4 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-medium shadow-sm" /></div>
+                        </div>
+                        <button @click="showToast('Profile saved!','success')" class="mt-8 bg-blue-600 text-white px-8 py-3.5 rounded-2xl text-sm font-bold hover:bg-blue-700 transition-all shadow-glow active:scale-[0.98]">Save Changes</button>
+                    </div>
+                    <div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-[2.5rem] p-8 sm:p-10 border border-white/50 dark:border-darkborder/50">
+                        <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-8 flex items-center gap-3 border-b border-slate-200/50 dark:border-darkborder/50 pb-5"><div class="p-2 bg-amber-100 dark:bg-amber-500/10 rounded-lg"><i data-lucide="sliders" class="text-amber-500 w-5 h-5"></i></div> Preferences</h3>
+                        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                            <div><p class="font-bold text-slate-900 dark:text-white">Dark Mode</p><p class="text-sm text-slate-500 font-medium mt-1">Toggle light / dark theme.</p></div>
+                            <button @click="toggleTheme()" :class="isDark?'bg-blue-600':'bg-slate-200'" class="w-14 h-7 rounded-full relative transition-all duration-300 focus:outline-none">
+                                <div :class="isDark?'translate-x-7':'translate-x-1'" class="absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-300"></div>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="glass-card bg-white/70 dark:bg-darkcard/70 rounded-[2.5rem] p-8 sm:p-10 border border-white/50 dark:border-darkborder/50 relative overflow-hidden">
+                        <div class="absolute left-0 top-0 bottom-0 w-2 bg-rose-500"></div>
+                        <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-5 flex items-center gap-3"><div class="p-2 bg-rose-100 dark:bg-rose-500/10 rounded-lg"><i data-lucide="database" class="text-rose-500 w-5 h-5"></i></div> Data Management</h3>
+                        <p class="text-sm text-slate-500 font-medium mb-8">Export your transaction history or delete all data.</p>
+                        <div class="flex gap-4 flex-wrap">
+                            <button @click="showToast('Export coming soon!','success')" class="bg-white hover:bg-slate-50 dark:bg-[#0B1120]/60 text-slate-900 dark:text-white px-6 py-3.5 rounded-2xl text-sm font-bold transition-all border border-slate-200 dark:border-darkborder shadow-sm flex items-center gap-2"><i data-lucide="download" class="w-5 h-5"></i> Export CSV</button>
+                            <button @click="showToast('Deletion coming soon!','error')" class="bg-rose-50 text-rose-600 dark:text-rose-400 px-6 py-3.5 rounded-2xl text-sm font-bold border border-rose-100 dark:border-rose-500/20 flex items-center gap-2"><i data-lucide="trash-2" class="w-5 h-5"></i> Delete Data</button>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <script>
+    const API = 'http://localhost:8000/api';
+    // USER_ID is now dynamic — set after login/signup and persisted in localStorage
+    let SESSION_USER_ID = parseInt(localStorage.getItem('ss_user_id') || '0');
+
+    function getUserId() { return SESSION_USER_ID; }
+    function setUserId(id) {
+        SESSION_USER_ID = id;
+        localStorage.setItem('ss_user_id', String(id));
+    }
+    function clearUserId() {
+        SESSION_USER_ID = 1;
+        localStorage.removeItem('ss_user_id');
+    }
+
+    async function apiFetch(path, options = {}) {
+        const res = await fetch(`${API}${path}`, {
+            headers: { 'Content-Type': 'application/json' },
+            ...options
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `API ${res.status}`);
+        }
+        return res.json();
+    }
+
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('SmartBudgetApp', () => ({
+            // ── State ──────────────────────────────────────────────────────────
+            isAuthenticated: false,
+            authView: 'login',
+            isDark: true,
+            isSidebarOpen: true,
+            activePage: 'dashboard',
+            authLoading: false,
+            showOnboarding: false,        // shown after login if budget not set
+            onboardingForm: { name: '', monthly_budget: '', saving_pct: 20 },
+            savingOnboarding: false,
+            currentUser: { name: 'User', email: 'hello@SmartBudget.ai', budget: 0 },
+            loginForm: { email: 'hello@SmartBudget.ai', password: 'password' },
+            signupForm: { name: '', email: '', password: '' },
+            toast: { show: false, message: '', type: 'success' },
+
+            // Dashboard
+            dashLoading: true,
+            stats: [],
+            transactions: [],
+            chartsInit: false,
+
+            // Add Expense
+            isSubmittingExpense: false,
+            showExpenseSuccess: false,
+            detectingCategory: false,
+            expenseForm: { description: '', amount: '', date: new Date().toISOString().split('T')[0], category: '', method: 'UPI', detectedCategory: '' },
+
+            // History
+            historyLoading: true,
+            historySearch: '',
+            showFilters: false,
+            historyFilterCategory: '',
+            historyFilterDateFrom: '',
+            historyFilterDateTo: '',
+            historyFilterMinAmount: '',
+            historyFilterMaxAmount: '',
+            get filteredTransactions() {
+                const q = this.historySearch.toLowerCase();
+                return this.transactions.filter(t => t.description.toLowerCase().includes(q) || t.category.toLowerCase().includes(q));
+            },
+
+            // Analytics
+            clearHistoryFilters() {
+                this.historySearch = '';
+                this.historyFilterCategory = '';
+                this.historyFilterDateFrom = '';
+                this.historyFilterDateTo = '';
+                this.historyFilterMinAmount = '';
+                this.historyFilterMaxAmount = '';
+            },
+
+            analyticsLoading: true,
+            aiInsights: [],
+
+            // Budget
+            budgetLoading: true,
+            budgets: [],
+            settingBudget: false,
+            budgetForm: { category: '', limit_amt: '' },
+
+            // Recommendations
+            recSearchQuery: '',
+            isSearchingRecs: false,
+            displayedRecs: [],
+            recBudgetContext: '',
+            recCategoryBudgets: {},
+            recTotalRemaining: 0,
+            recManualBudget: '',
+            recManualMin: '',
+            userBudgetInfo: null,  // cached { budget, top_category, total_spent }
+
+            // Chat
+            chatInput: '',
+            chatTyping: false,
+            chatStarters: [],
+            chatHistory: [{ id: 1, sender: 'bot', text: 'Hi! I\'m your SmartBudget AI. Ask me anything about your finances!' }],
+
+            // Settings
+            settingsBudget: '',
+            savingBudgetSettings: false,
+
+            // ── Computed ────────────────────────────────────────────────────────
+            get activePageTitle() {
+                return this.navItems.find(p => p.id === this.activePage)?.label || 'Dashboard';
+            },
+
+            navItems: [
+                { id: 'dashboard',       label: 'Dashboard',       icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
+                { id: 'add-expense',     label: 'Add Expense',     icon: 'M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z' },
+                { id: 'history',         label: 'History',         icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+                { id: 'analytics',       label: 'Analytics',       icon: 'M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z' },
+                { id: 'budget',          label: 'Budgets',         icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
+                { id: 'recommendations', label: 'Recommendations', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
+                { id: 'ai-assistant',    label: 'AI Assistant',    icon: 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z' },
+                { id: 'settings',        label: 'Settings',        icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z' },
+            ],
+
+            // ── Helpers ──────────────────────────────────────────────────────────
+            getIconSVG(path, isActive) {
+                return `<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="${isActive?'2.5':'2'}" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="${path}"></path></svg>`;
+            },
+            showToast(message, type='success') {
+                this.toast = { show: true, message, type };
+                setTimeout(() => this.toast.show = false, 3500);
+            },
+            toggleTheme() {
+                this.isDark = !this.isDark;
+                if (this.chartsInit) setTimeout(() => Object.values(Chart.instances).forEach(c => c.update()), 50);
+            },
+
+            // ── Auth ─────────────────────────────────────────────────────────────
+            async login() {
+                this.authLoading = true;
+                try {
+                    const user = await apiFetch('/expenses/login-lookup', {
+                        method: 'POST',
+                        body: JSON.stringify({ email: this.loginForm.email })
+                    });
+                    setUserId(user.id);
+                    this.currentUser = { name: user.username, email: user.email, budget: user.budget || 0 };
+                    this.onboardingForm.name = user.username;
+                    this.isAuthenticated = true;
+                    this.authLoading = false;
+                    await new Promise(r => setTimeout(r, 400));
+                    lucide.createIcons();
+                    if (!user.budget || user.budget <= 0) {
+                        this.showOnboarding = true;
+                    } else {
+                        await this.loadDashboard();
+                    }
+                } catch(e) {
+                    this.authLoading = false;
+                    this.showToast(e.message || 'Login failed', 'error');
+                }
+            },
+            async signup() {
+                this.authLoading = true;
+                try {
+                    const user = await apiFetch('/expenses/register', {
+                        method: 'POST',
+                        body: JSON.stringify({ username: this.signupForm.name, email: this.signupForm.email })
+                    });
+                    setUserId(user.id);
+                    this.currentUser = { name: user.username, email: user.email, budget: 0 };
+                    this.onboardingForm.name = user.username;
+                    this.isAuthenticated = true;
+                    this.authLoading = false;
+                    await new Promise(r => setTimeout(r, 400));
+                    lucide.createIcons();
+                    // New user always gets onboarding
+                    this.showOnboarding = true;
+                } catch(e) {
+                    this.authLoading = false;
+                    this.showToast(e.message || 'Signup failed', 'error');
+                }
+            },
+            async loadUserProfile() {
+                try {
+                    const profile = await apiFetch(`/expenses/profile/${getUserId()}`);
+                    this.currentUser.name   = profile.username || this.currentUser.name;
+                    this.currentUser.budget = profile.budget   || 0;
+                    this.onboardingForm.name = this.currentUser.name;
+                    // Show onboarding if budget has never been set
+                    if (!this.currentUser.budget || this.currentUser.budget <= 0) {
+                        this.showOnboarding = true;
+                    } else {
+                        await this.loadDashboard();
+                    }
+                } catch(e) {
+                    // Backend unreachable — go straight to dashboard
+                    await this.loadDashboard();
+                }
+            },
+            async saveOnboarding() {
+                if (!this.onboardingForm.monthly_budget || parseFloat(this.onboardingForm.monthly_budget) <= 0) {
+                    this.showToast('Please enter a valid monthly budget', 'error');
+                    return;
+                }
+                this.savingOnboarding = true;
+                try {
+                    const updated = await apiFetch(`/expenses/profile/${getUserId()}/budget`, {
+                        method: 'PUT',
+                        body: JSON.stringify({
+                            monthly_budget: parseFloat(this.onboardingForm.monthly_budget),
+                            username: this.onboardingForm.name || this.currentUser.name,
+                        })
+                    });
+                    this.currentUser.budget = updated.budget;
+                    this.currentUser.name   = updated.username;
+                    this.showOnboarding = false;
+                    this.showToast(`Budget of ₹${updated.budget.toLocaleString()} saved!`, 'success');
+                    await this.loadDashboard();
+                } catch(e) {
+                    this.showToast('Could not save budget: ' + e.message, 'error');
+                } finally {
+                    this.savingOnboarding = false;
+                }
+            },
+            async saveOnboardingWithGoal() {
+                const income = parseFloat(this.onboardingForm.monthly_budget);
+                if (!income || income <= 0) {
+                    this.showToast('Please enter a valid monthly budget', 'error');
+                    return;
+                }
+                // The tracked budget = income minus savings target
+                const spendingLimit = Math.round(income * (1 - this.onboardingForm.saving_pct / 100));
+                this.savingOnboarding = true;
+                try {
+                    const updated = await apiFetch(`/expenses/profile/${getUserId()}/budget`, {
+                        method: 'PUT',
+                        body: JSON.stringify({
+                            monthly_budget: spendingLimit,
+                            username: this.onboardingForm.name || this.currentUser.name,
+                        })
+                    });
+                    this.currentUser.budget = updated.budget;
+                    this.currentUser.name   = updated.username;
+                    this.showOnboarding = false;
+                    const savedAmt = Math.round(income - spendingLimit);
+                    this.showToast(`Spending limit ₹${spendingLimit.toLocaleString()} set. Saving ₹${savedAmt.toLocaleString()}/mo!`, 'success');
+                    await this.loadDashboard();
+                } catch(e) {
+                    this.showToast('Could not save: ' + e.message, 'error');
+                } finally {
+                    this.savingOnboarding = false;
+                }
+            },
+            logout() {
+                clearUserId();
+                this.isAuthenticated = false;
+                this.authView = 'login';
+                this.activePage = 'dashboard';
+                this.chartsInit = false;
+                this.transactions = [];
+                this.budgets = [];
+                this.aiInsights = [];
+                this.displayedRecs = [];
+                this.chatHistory = [{ id: 1, sender: 'bot', text: 'Hi! I\'m your SmartBudget AI. Ask me anything about your finances!' }];
+                this.currentUser = { name: 'User', email: '', budget: 0 };
+                this.loginForm = { email: '', password: '' };
+                this.signupForm = { name: '', email: '', password: '' };
+                Object.values(Chart.instances).forEach(c => c.destroy());
+            },
+
+            // ── Navigation ────────────────────────────────────────────────────────
+            async init() {
+                // Restore session if user was previously logged in
+                const savedId = parseInt(localStorage.getItem('ss_user_id') || '0');
+                if (savedId && savedId > 0) {
+                    try {
+                        const profile = await apiFetch(`/expenses/profile/${savedId}`);
+                        setUserId(savedId);
+                        this.currentUser = { name: profile.username, email: profile.email, budget: profile.budget || 0 };
+                        this.isAuthenticated = true;
+                        await this.$nextTick();
+                        lucide.createIcons();
+                        await this.loadDashboard();
+                    } catch(e) {
+                        // Saved ID is stale — clear it and show login
+                        clearUserId();
+                        this.isAuthenticated = false;
+                    }
+                }
+            },
+
+            navigate_mobile() { if (window.innerWidth < 1024) this.isSidebarOpen = false; },
+            async navigate(page) {
+                this.navigate_mobile();
+                if (page !== 'dashboard') this.chartsInit = false;
+                this.activePage = page;
+                await this.$nextTick();
+                lucide.createIcons();
+                if (page === 'dashboard') await this.loadDashboard();
+                if (page === 'history') await this.loadHistory();
+                if (page === 'analytics') await this.loadAnalytics();
+                if (page === 'budget') await this.loadBudgets();
+                if (page === 'recommendations') await this.initRecommendationsPage();
+                if (page === 'ai-assistant') await this.loadChatStarters();
+                if (page === 'settings') { this.settingsBudget = this.currentUser.budget || ''; await this.$nextTick(); lucide.createIcons(); }
+            },
+
+            // ── Dashboard ─────────────────────────────────────────────────────────
+            async loadDashboard() {
+                this.dashLoading = true;
+                try {
+                    const [summary, expenses] = await Promise.all([
+                        apiFetch(`/analytics/${getUserId()}/summary`).catch(() => null),
+                        apiFetch(`/expenses/${getUserId()}`).catch(() => [])
+                    ]);
+                    this.transactions = expenses;
+                    this.userBudgetInfo = summary; // cache for recommendations
+
+                    if (summary) {
+                        const rem = (summary.budget||0) - (summary.total_spent||summary.total||0);
+                        this.stats = [
+                            { title:'Total Spending', value:'₹'+(summary.total_spent||summary.total||0).toLocaleString(), bgClass:'bg-blue-500/10 text-blue-500', iconHtml:'<svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>', trendIcon:'', trendText:'This month', trendColor:'text-slate-500' },
+                            { title:'Remaining Budget', value:'₹'+Math.max(rem,0).toLocaleString(), bgClass:'bg-emerald-500/10 text-emerald-500', iconHtml:'<svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>', trendIcon:'', trendText:'of ₹'+(summary.budget||0).toLocaleString(), trendColor:'text-slate-500' },
+                            { title:'Highest Category', value:summary.top_category||'—', bgClass:'bg-rose-500/10 text-rose-500', iconHtml:'<svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path></svg>', trendIcon:'', trendText:'Most spent', trendColor:'text-rose-500' },
+                            { title:'Transactions', value:String(summary.transactions||expenses.length), bgClass:'bg-amber-500/10 text-amber-500', iconHtml:'<svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>', trendIcon:'', trendText:'This month', trendColor:'text-slate-500' },
+                        ];
+                        this.dashLoading = false;
+                        await this.$nextTick();
+                        this.initCharts(summary);
+                    } else {
+                        this.stats = [];
+                        this.dashLoading = false;
+                    }
+                } catch(e) {
+                    this.dashLoading = false;
+                    this.showToast('Could not connect to backend', 'error');
+                }
+            },
+
+            // ── History ───────────────────────────────────────────────────────────
+            async updateMonthlyBudget() {
+                const val = parseFloat(this.settingsBudget);
+                if (!val || val <= 0) { this.showToast('Enter a valid budget amount', 'error'); return; }
+                this.savingBudgetSettings = true;
+                try {
+                    const updated = await apiFetch(`/expenses/profile/${getUserId()}/budget`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ monthly_budget: val, username: this.currentUser.name })
+                    });
+                    this.currentUser.budget = updated.budget;
+                    this.showToast(`Budget updated to ₹${val.toLocaleString()}/month`, 'success');
+                } catch(e) {
+                    this.showToast('Update failed: ' + e.message, 'error');
+                } finally {
+                    this.savingBudgetSettings = false;
+                }
+            },
+
+            // ── History ───────────────────────────────────────────────────────────
+            async loadHistory() {
+                this.historyLoading = true;
+                try { this.transactions = await apiFetch(`/expenses/${getUserId()}`); }
+                catch(e) { this.showToast('Could not load transactions', 'error'); }
+                finally { this.historyLoading = false; await this.$nextTick(); lucide.createIcons(); }
+            },
+            async deleteExpense(id) {
+                try {
+                    await apiFetch(`/expenses/${id}`, { method: 'DELETE' });
+                    this.transactions = this.transactions.filter(t => t.id !== id);
+                    this.showToast('Deleted', 'success');
+                } catch(e) { this.showToast('Delete failed', 'error'); }
+            },
+
+            // ── Add Expense ───────────────────────────────────────────────────────
+            async autoDetectCategory() {
+                const desc = this.expenseForm.description.trim();
+                if (!desc || this.expenseForm.category) return;
+                this.detectingCategory = true;
+                try {
+                    const res = await apiFetch('/expenses/categorize?description=' + encodeURIComponent(desc), { method: 'POST' });
+                    this.expenseForm.detectedCategory = res.category;
+                } catch(e) { /* silent */ }
+                finally { this.detectingCategory = false; }
+            },
+            async submitExpense() {
+                this.showExpenseSuccess = false;
+                this.isSubmittingExpense = true;
+                try {
+                    const payload = {
+                        user_id: getUserId(),
+                        description: this.expenseForm.description,
+                        amount: parseFloat(this.expenseForm.amount),
+                        category: this.expenseForm.category || this.expenseForm.detectedCategory || null,
+                    };
+                    if (this.expenseForm.date) payload.date = this.expenseForm.date;
+                    const res = await apiFetch('/expenses/', { method: 'POST', body: JSON.stringify(payload) });
+                    this.expenseForm.detectedCategory = res.category;
+                    this.transactions.unshift(res);
+                    this.showExpenseSuccess = true;
+                    this.expenseForm.description = '';
+                    this.expenseForm.amount = '';
+                    this.expenseForm.category = '';
+                    await this.$nextTick(); lucide.createIcons();
+                    setTimeout(() => this.showExpenseSuccess = false, 5000);
+                    // Check budget alerts for the added category
+                    this.checkBudgetAlert(res.category, res.amount);
+                } catch(e) { this.showToast('Failed: ' + e.message, 'error'); }
+                finally { this.isSubmittingExpense = false; }
+            },
+
+            async checkBudgetAlert(category, amount) {
+                // Re-fetch budgets silently and warn if this category is near/over limit
+                try {
+                    const currentMonth = new Date().toISOString().slice(0, 7);
+                    const [budgets, expenses] = await Promise.all([
+                        apiFetch(`/expenses/budgets/${getUserId()}`),
+                        apiFetch(`/expenses/${getUserId()}`)
+                    ]);
+                    const catLower = (category || '').toLowerCase();
+                    const budget = budgets.find(b => {
+                        const bLower = (b.category || '').toLowerCase();
+                        return bLower === catLower || bLower.includes(catLower) || catLower.includes(bLower);
+                    });
+                    if (!budget) return;
+                    const spent = expenses
+                        .filter(t => {
+                            const tCat = (t.category || '').toLowerCase();
+                            const bCat = (budget.category || '').toLowerCase();
+                            return (tCat === bCat || tCat.includes(bCat) || bCat.includes(tCat))
+                                && t.date && t.date.startsWith(currentMonth);
+                        })
+                        .reduce((s, t) => s + t.amount, 0);
+                    const pct = Math.round(spent / budget.limit_amt * 100);
+                    if (pct >= 100) {
+                        this.showToast(`🚨 Over budget on ${category}! Spent ₹${spent.toLocaleString()} / ₹${budget.limit_amt.toLocaleString()}`, 'error');
+                    } else if (pct >= 80) {
+                        this.showToast(`⚠️ ${category} budget at ${pct}% — only ₹${(budget.limit_amt - spent).toLocaleString()} left`, 'error');
+                    }
+                } catch(e) { /* silent */ }
+            },
+
+            // ── Analytics ─────────────────────────────────────────────────────────
+            async loadAnalytics() {
+                this.analyticsLoading = true;
+                try {
+                    const [data, summary] = await Promise.all([
+                        apiFetch(`/analytics/${getUserId()}/insights`),
+                        apiFetch(`/analytics/${getUserId()}/summary`)
+                    ]);
+
+                    const insights = [];
+                    const patterns = data.patterns || [];
+                    const budget   = data.budget   || 0;
+                    const total    = data.total_spent || 0;
+
+                    // 1. Budget status
+                    if (budget > 0) {
+                        const used = Math.round(total / budget * 100);
+                        const rem  = budget - total;
+                        if (total > budget) {
+                            insights.push({ type: 'warning',
+                                message: `You've exceeded your monthly budget by ₹${Math.abs(rem).toLocaleString()}. Total spent: ₹${total.toLocaleString()} vs budget ₹${budget.toLocaleString()}.` });
+                        } else if (used >= 80) {
+                            insights.push({ type: 'warning',
+                                message: `You've used ${used}% of your monthly budget. Only ₹${rem.toLocaleString()} remaining — spend carefully for the rest of the month.` });
+                        } else {
+                            insights.push({ type: 'success',
+                                message: `You're on track! Used ${used}% of your ₹${budget.toLocaleString()} budget. ₹${rem.toLocaleString()} still available this month.` });
+                        }
+                    }
+
+                    // 2. Top spending category
+                    if (patterns.length > 0) {
+                        const top = patterns[0];
+                        insights.push({ type: top.percentage > 40 ? 'warning' : 'info',
+                            message: `Your biggest expense is ${top.category} at ₹${top.total_spent.toLocaleString()} (${top.percentage}% of total spend). Avg transaction: ₹${top.avg_transaction.toLocaleString()}.` });
+                    }
+
+                    // 3. Increasing trend categories
+                    const rising = patterns.filter(p => p.trend === 'increasing');
+                    if (rising.length > 0) {
+                        const names = rising.map(p => p.category).join(', ');
+                        insights.push({ type: 'warning',
+                            message: `Spending is rising in: ${names}. These categories cost more this month than last — consider reviewing them.` });
+                    }
+
+                    // 4. Decreasing trend — positive
+                    const falling = patterns.filter(p => p.trend === 'decreasing');
+                    if (falling.length > 0) {
+                        const names = falling.map(p => p.category).join(', ');
+                        insights.push({ type: 'success',
+                            message: `Great job! Spending decreased in: ${names}. You're spending less in these categories compared to last month.` });
+                    }
+
+                    // 5. Anomalies
+                    (data.anomalies || []).forEach(a => {
+                        insights.push({ type: 'warning', message: a });
+                    });
+
+                    // 6. Savings tip from backend
+                    if (data.savings_tip && data.savings_tip !== 'No data yet.') {
+                        insights.push({ type: 'info', message: data.savings_tip });
+                    }
+
+                    // 7. Category diversity tip
+                    if (patterns.length > 0) {
+                        const topPct = patterns[0].percentage;
+                        if (topPct > 50) {
+                            insights.push({ type: 'info',
+                                message: `${patterns[0].category} accounts for over half your spending. Diversifying expenses or setting a sub-budget for it could help you save more.` });
+                        }
+                    }
+
+                    // 8. No spend categories (compared to what has budgets)
+                    if (patterns.length === 0) {
+                        insights.push({ type: 'info',
+                            message: 'No expenses recorded yet. Start adding transactions to unlock personalised spending insights.' });
+                    }
+
+                    this.aiInsights = insights;
+                    await this.$nextTick(); lucide.createIcons();
+                    this.initAnalyticsCharts(data);
+                } catch(e) { this.aiInsights = []; }
+                finally { this.analyticsLoading = false; }
+            },
+
+            // ── Budgets ───────────────────────────────────────────────────────────
+            async loadBudgets() {
+                this.budgetLoading = true;
+                try {
+                    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+                    const [raw, allExpenses] = await Promise.all([
+                        apiFetch(`/expenses/budgets/${getUserId()}`),
+                        apiFetch(`/expenses/${getUserId()}`)
+                    ]);
+                    // Build spend map for CURRENT MONTH only (keyed by lowercase)
+                    const spendMap = {};
+                    allExpenses.forEach(t => {
+                        if (t.date && t.date.startsWith(currentMonth)) {
+                            const key = (t.category || '').toLowerCase();
+                            spendMap[key] = (spendMap[key] || 0) + t.amount;
+                        }
+                    });
+                    // Enrich each budget with real spent amount + alert flag
+                    // Match budget category against expense category with fuzzy lowercase check
+                    this.budgets = raw.map(b => {
+                        const bKey = (b.category || '').toLowerCase();
+                        // Try exact match first, then partial match (e.g. "food" matches "food & dining")
+                        let spent = spendMap[bKey] || 0;
+                        if (!spent) {
+                            for (const [k, v] of Object.entries(spendMap)) {
+                                if (k.includes(bKey) || bKey.includes(k)) { spent += v; }
+                            }
+                        }
+                        const pct   = b.limit_amt > 0 ? Math.round(spent / b.limit_amt * 100) : 0;
+                        // Show alert if over 80%
+                        if (pct >= 100) {
+                            this.showToast(`⚠️ Over budget on ${b.category}! ₹${spent.toLocaleString()} / ₹${b.limit_amt.toLocaleString()}`, 'error');
+                        } else if (pct >= 80) {
+                            this.showToast(`🔔 ${b.category} budget at ${pct}% — ₹${(b.limit_amt - spent).toLocaleString()} left`, 'error');
+                        }
+                        return { ...b, spent, pct };
+                    });
+                } catch(e) { this.showToast('Could not load budgets', 'error'); }
+                finally { this.budgetLoading = false; }
+            },
+            async setBudget() {
+                if (!this.budgetForm.category || !this.budgetForm.limit_amt) return;
+                this.settingBudget = true;
+                try {
+                    await apiFetch('/expenses/budgets/', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            user_id: getUserId(),
+                            category: this.budgetForm.category,
+                            limit_amt: parseFloat(this.budgetForm.limit_amt),
+                            month: new Date().toISOString().slice(0,7)
+                        })
+                    });
+                    this.budgetForm = { category: '', limit_amt: '' };
+                    this.showToast('Budget set!', 'success');
+                    await this.loadBudgets();
+                } catch(e) { this.showToast('Failed: ' + e.message, 'error'); }
+                finally { this.settingBudget = false; }
+            },
+
+            // ── Recommendations ───────────────────────────────────────────────────
+            async initRecommendationsPage() {
+                // Always fetch fresh — never use stale cached data
+                try {
+                    const [summary, expenses, budgets] = await Promise.all([
+                        apiFetch(`/analytics/${getUserId()}/summary`),
+                        apiFetch(`/expenses/${getUserId()}`),
+                        apiFetch(`/expenses/budgets/${getUserId()}`)
+                    ]);
+                    this.userBudgetInfo = summary;
+                    // Build category spent map for current month
+                    const month = new Date().toISOString().slice(0,7);
+                    const spentMap = {};
+                    expenses.forEach(t => {
+                        if (t.date && t.date.startsWith(month)) {
+                            const k = (t.category||'').toLowerCase();
+                            spentMap[k] = (spentMap[k]||0) + t.amount;
+                        }
+                    });
+                    // Build category remaining map
+                    this.recCategoryBudgets = {};
+                    budgets.forEach(b => {
+                        const k = (b.category||'').toLowerCase();
+                        const spent = spentMap[k] || 0;
+                        this.recCategoryBudgets[k] = Math.max(b.limit_amt - spent, 0);
+                    });
+                    const totalRem = Math.max((summary.budget||0) - (summary.total_spent||0), 0);
+                    this.recTotalRemaining = totalRem;
+                    this.recBudgetContext = `Remaining this month: ₹${totalRem.toLocaleString()} · Top spend: ${summary.top_category||'—'}`;
+                } catch(e) { this.recBudgetContext = ''; }
+                await this.$nextTick(); lucide.createIcons();
+            },
+
+            async searchRecommendations() {
+                const q = this.recSearchQuery.trim();
+                if (!q) return;
+                this.isSearchingRecs = true;
+                this.displayedRecs = [];
+
+                // Detect category from query using keyword map
+                const KEYWORD_CATS = {
+                    'laptop':'Electronics','macbook':'Electronics','phone':'Electronics',
+                    'mobile':'Electronics','iphone':'Electronics','earbuds':'Electronics',
+                    'headphone':'Electronics','charger':'Electronics','tablet':'Electronics',
+                    'speaker':'Electronics','monitor':'Electronics','keyboard':'Electronics',
+                    'mouse':'Electronics','tv':'Electronics','camera':'Electronics',
+                    'shampoo':'Personal Care','facewash':'Personal Care','face wash':'Personal Care',
+                    'moisturizer':'Personal Care','sunscreen':'Personal Care','soap':'Personal Care',
+                    'deodorant':'Personal Care','toothpaste':'Personal Care','perfume':'Personal Care',
+                    'lotion':'Personal Care','serum':'Personal Care','makeup':'Personal Care',
+                    'shirt':'Shopping','jeans':'Shopping','shoes':'Shopping','kurta':'Shopping',
+                    'dress':'Shopping','jacket':'Shopping','sneakers':'Shopping','clothing':'Shopping',
+                    'grocery':'Food & Dining','rice':'Food & Dining','dal':'Food & Dining',
+                    'oil':'Food & Dining','snack':'Food & Dining','biscuit':'Food & Dining',
+                    'medicine':'Health','vitamin':'Health','supplement':'Health','protein':'Health',
+                    'book':'Education','notebook':'Education','pen':'Education',
+                };
+                const qLower = q.toLowerCase();
+                let detectedCategory = 'Shopping';
+                for (const [kw, cat] of Object.entries(KEYWORD_CATS)) {
+                    if (qLower.includes(kw)) { detectedCategory = cat; break; }
+                }
+
+                // Pick budget: category remaining > total remaining > user input > fallback
+                let maxBudget = 5000;
+                let budgetSource = 'default';
+                const catKey = detectedCategory.toLowerCase();
+
+                if (this.recManualBudget && parseFloat(this.recManualBudget) > 0) {
+                    maxBudget = parseFloat(this.recManualBudget);
+                    budgetSource = 'manual';
+                    if (!this.recManualMin) {
+                        // If only max is set, still auto-calc 40% floor unless user sets min
+                    }
+                } else if (this.recCategoryBudgets && this.recCategoryBudgets[catKey] > 0) {
+                    maxBudget = this.recCategoryBudgets[catKey];
+                    budgetSource = detectedCategory;
+                } else if (this.recTotalRemaining > 0) {
+                    // Cap at a sensible per-purchase limit (25% of remaining)
+                    maxBudget = Math.min(this.recTotalRemaining, this.recTotalRemaining * 0.25);
+                    maxBudget = Math.max(maxBudget, 500); // at least ₹500
+                    budgetSource = 'total remaining';
+                }
+
+                // Use manual min if set, otherwise auto-calc 40% floor
+                let minPrice;
+                if (this.recManualMin && parseFloat(this.recManualMin) >= 0) {
+                    minPrice = Math.round(parseFloat(this.recManualMin));
+                } else {
+                    minPrice = maxBudget >= 500 ? Math.round(maxBudget * 0.40) : 0;
+                }
+                // Validate: min must be less than max
+                if (minPrice >= maxBudget) {
+                    this.showToast('Min price must be less than max budget', 'error');
+                    this.isSearchingRecs = false;
+                    return;
+                }
+
+                // Update context pill
+                const isFullyManual = (this.recManualMin || this.recManualBudget);
+                const budgetLabel = isFullyManual
+                    ? `₹${minPrice.toLocaleString()} – ₹${Math.round(maxBudget).toLocaleString()} (custom range)`
+                    : budgetSource === 'total remaining'
+                    ? `₹${minPrice.toLocaleString()} – ₹${Math.round(maxBudget).toLocaleString()} (from remaining budget)`
+                    : `₹${minPrice.toLocaleString()} – ₹${Math.round(maxBudget).toLocaleString()} (${budgetSource} budget)`;
+                this.recBudgetContext = `Searching: ${budgetLabel}`;
+
+                try {
+                    const res = await apiFetch(
+                        `/recommendations/search?query=${encodeURIComponent(q)}&category=${encodeURIComponent(detectedCategory)}&max_budget=${Math.round(maxBudget)}&min_price=${minPrice}&user_id=${getUserId()}`
+                    );
+                    if (res.results && res.results.length > 0) {
+                        this.displayedRecs = res.results.map((p, i) => ({
+                            id: i,
+                            name: p.name,
+                            price: p.price,
+                            brand: p.brand,
+                            category: p.category,
+                            source: p.source,
+                            image: p.image,
+                            url: p.url,
+                            rating: p.rating||0,
+                            savings: p.savings||0,
+                            reason: p.reason||''
+                        }));
+                        this.showToast(`Found ${res.count} deals!`, 'success');
+                    } else {
+                        this.showToast('No live results — try a different query', 'error');
+                    }
+                } catch(e) {
+                    this.showToast('Search failed: backend may be busy', 'error');
+                } finally {
+                    this.isSearchingRecs = false;
+                    await this.$nextTick(); lucide.createIcons();
+                }
+            },
+
+            // ── AI Chat ───────────────────────────────────────────────────────────
+            async loadChatStarters() {
+                try {
+                    const res = await apiFetch(`/chat/starters/${getUserId()}`);
+                    this.chatStarters = res.starters||[];
+                } catch(e) {
+                    this.chatStarters = ['How much did I spend this month?','Where can I cut costs?','What is my top category?'];
+                }
+            },
+            async sendChatMessage(text) {
+                const msg = (typeof text==='string'?text:this.chatInput).trim();
+                if (!msg || this.chatTyping) return;
+                this.chatInput = '';
+                this.chatHistory.push({ id: Date.now(), sender: 'user', text: msg });
+                this.chatTyping = true;
+                await this.$nextTick();
+                const c = document.getElementById('chat-container');
+                if(c) c.scrollTop = c.scrollHeight;
+                lucide.createIcons();
+                try {
+                    const res = await apiFetch('/chat/', { method:'POST', body: JSON.stringify({ message: msg, user_id: getUserId(), session_id: `user_${getUserId()}` }) });
+                    this.chatHistory.push({ id: Date.now()+1, sender:'bot', text: res.reply || 'Sorry, no response received.' });
+                } catch(e) {
+                    this.chatHistory.push({ id: Date.now()+1, sender:'bot', text:'Sorry, AI is unreachable. Make sure the backend is running!' });
+                } finally {
+                    this.chatTyping = false;
+                    await this.$nextTick();
+                    if(c) c.scrollTop = c.scrollHeight;
+                    lucide.createIcons();
+                }
+            },
+            async clearChatSession() {
+                try { await apiFetch(`/chat/session?session_id=user_${getUserId()}`, { method:'DELETE' }); } catch(e) {}
+                this.chatHistory = [{ id: Date.now(), sender:'bot', text:'Chat cleared! How can I help?' }];
+            },
+
+            // ── Charts ────────────────────────────────────────────────────────────
+            initCharts(summary) {
+                Chart.defaults.font.family = "'Inter', sans-serif";
+                Chart.defaults.font.weight = '600';
+
+                const catData = summary?.category_breakdown
+                    ? Object.entries(summary.category_breakdown)
+                    : [];
+
+                // ── Pie chart ─────────────────────────────────────────────
+                const pieEl = document.getElementById('dashPieChart');
+                if (pieEl) {
+                    Chart.getChart(pieEl)?.destroy();
+                    if (catData.length > 0) {
+                        new Chart(pieEl.getContext('2d'), {
+                            type: 'doughnut',
+                            data: {
+                                labels: catData.map(d => d[0]),
+                                datasets: [{
+                                    data: catData.map(d => d[1]),
+                                    backgroundColor: ['#3B82F6','#8B5CF6','#F59E0B','#10B981','#EF4444','#06B6D4','#EC4899','#14B8A6'],
+                                    borderWidth: 0, cutout: '75%', borderRadius: 6
+                                }]
+                            },
+                            options: {
+                                responsive: true, maintainAspectRatio: false,
+                                plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 16, font: { size: 12 } } } }
+                            }
+                        });
+                    } else {
+                        // Empty state — draw a grey placeholder ring
+                        new Chart(pieEl.getContext('2d'), {
+                            type: 'doughnut',
+                            data: { labels: ['No data yet'], datasets: [{ data: [1], backgroundColor: ['#e2e8f0'], borderWidth: 0, cutout: '75%' }] },
+                            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+                        });
+                    }
+                }
+
+                // ── Line chart ────────────────────────────────────────────
+                const lineEl = document.getElementById('dashLineChart');
+                if (lineEl) {
+                    Chart.getChart(lineEl)?.destroy();
+                    const ctx  = lineEl.getContext('2d');
+                    const grad = ctx.createLinearGradient(0, 0, 0, 300);
+                    grad.addColorStop(0, 'rgba(59,130,246,0.35)');
+                    grad.addColorStop(1, 'rgba(59,130,246,0)');
+                    const trend  = summary?.monthly_trend || [];
+                    const labels = trend.length ? trend.map(d => d.month) : ['—'];
+                    const values = trend.length ? trend.map(d => d.amount) : [0];
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels,
+                            datasets: [{
+                                label: 'Spend', data: values,
+                                borderColor: '#3B82F6', backgroundColor: grad,
+                                borderWidth: 3, fill: true, tension: 0.4,
+                                pointRadius: values.length === 1 ? 5 : 0,
+                                pointHoverRadius: 6, pointBackgroundColor: '#3B82F6'
+                            }]
+                        },
+                        options: {
+                            responsive: true, maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                x: { grid: { display: false }, ticks: { color: '#64748b' } },
+                                y: { grid: { color: 'rgba(100,116,139,0.1)' }, ticks: { color: '#64748b', callback: v => '₹' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v) } }
+                            }
+                        }
+                    });
+                }
+                this.chartsInit = true;
+            },
+            initAnalyticsCharts(data) {
+                const bEl = document.getElementById('analyticsBarChart');
+                const lEl = document.getElementById('analyticsLineChart');
+                if (!bEl || !lEl) return;
+                Chart.getChart(bEl)?.destroy();
+                Chart.getChart(lEl)?.destroy();
+
+                // ── Monthly Burn Rate chart ───────────────────────────────
+                // Backend returns monthly_totals as { "2025-01": 4200, "2025-02": 3100, ... }
+                const monthlyObj = data?.monthly_totals || {};
+                const monthlyKeys = Object.keys(monthlyObj).sort();
+                const monthlyLabels = monthlyKeys.map(k => {
+                    const [y, m] = k.split('-');
+                    return new Date(+y, +m - 1).toLocaleString('default', { month: 'short', year: '2-digit' });
+                });
+                const monthlyValues = monthlyKeys.map(k => monthlyObj[k]);
+
+                new Chart(bEl.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: monthlyLabels.length ? monthlyLabels : ['No data'],
+                        datasets: [{
+                            label: 'Monthly Spend',
+                            data: monthlyValues.length ? monthlyValues : [0],
+                            backgroundColor: monthlyValues.map((v, i) =>
+                                i === monthlyValues.length - 1 ? '#3B82F6' : 'rgba(59,130,246,0.45)'),
+                            borderRadius: 8,
+                            borderSkipped: false,
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: ctx => ' ₹' + ctx.raw.toLocaleString() } }
+                        },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#64748b' } },
+                            y: { grid: { color: 'rgba(100,116,139,0.1)' }, ticks: { color: '#64748b', callback: v => '₹' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v) } }
+                        }
+                    }
+                });
+
+                // ── Weekly Trend chart ────────────────────────────────────
+                // Backend returns weekly_spend as [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
+                const weeklyData = data?.weekly_spend || [0,0,0,0,0,0,0];
+                const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                const ctxL = lEl.getContext('2d');
+                const gradL = ctxL.createLinearGradient(0, 0, 0, 280);
+                gradL.addColorStop(0, 'rgba(16,185,129,0.35)');
+                gradL.addColorStop(1, 'rgba(16,185,129,0)');
+
+                new Chart(ctxL, {
+                    type: 'line',
+                    data: {
+                        labels: weekDays,
+                        datasets: [{
+                            label: 'Daily Spend',
+                            data: weeklyData,
+                            borderColor: '#10B981',
+                            backgroundColor: gradL,
+                            borderWidth: 3,
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#10B981',
+                            pointHoverRadius: 7,
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: ctx => ' ₹' + ctx.raw.toLocaleString() } }
+                        },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#64748b' } },
+                            y: { grid: { color: 'rgba(100,116,139,0.1)' }, beginAtZero: true,
+                                 ticks: { color: '#64748b', callback: v => '₹' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v) } }
+                        }
+                    }
+                });
+            },
+        }));
+    });
+
+    document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
+    </script>
+</body>
+</html>

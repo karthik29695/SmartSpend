@@ -1,0 +1,22 @@
+.env
+.env.local
+
+# Ignore large dependency folders
+node_modules/
+
+# Ignore IDE-specific settings
+.vscode/
+venv/
+
+# Ignore virtual environments
+venv/
+.venv/
+env/
+scripts/
+smartspend.db
+expense_classifier.pkl
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
