@@ -70,31 +70,39 @@ def get_summary(user_id: int):
         conn.close()
         raise HTTPException(404, "User not found")
 
+    from datetime import date as _date
+    current_month = _date.today().strftime("%Y-%m")
+
+    # All stats filtered to CURRENT MONTH only
     row = conn.execute(
-        "SELECT SUM(amount) AS total, COUNT(*) AS txns FROM expenses WHERE user_id = ?",
-        (user_id,),
+        """SELECT SUM(amount) AS total, COUNT(*) AS txns
+           FROM expenses
+           WHERE user_id = ? AND strftime('%Y-%m', date) = ?""",
+        (user_id, current_month),
     ).fetchone()
 
     top_cat = conn.execute(
         """
         SELECT category, SUM(amount) AS s
-        FROM expenses WHERE user_id = ?
+        FROM expenses
+        WHERE user_id = ? AND strftime('%Y-%m', date) = ?
         GROUP BY category ORDER BY s DESC LIMIT 1
         """,
-        (user_id,),
+        (user_id, current_month),
     ).fetchone()
 
-    # Category breakdown for pie chart
+    # Category breakdown for pie chart — current month only
     cat_rows = conn.execute(
         """
         SELECT category, SUM(amount) AS s
-        FROM expenses WHERE user_id = ?
+        FROM expenses
+        WHERE user_id = ? AND strftime('%Y-%m', date) = ?
         GROUP BY category ORDER BY s DESC
         """,
-        (user_id,),
+        (user_id, current_month),
     ).fetchall()
 
-    # Monthly trend for line chart (last 6 months, oldest first)
+    # Monthly trend for line chart (last 6 months, oldest first) — all time for chart
     trend_rows = conn.execute(
         """
         SELECT strftime('%Y-%m', date) AS month, SUM(amount) AS total
@@ -114,7 +122,7 @@ def get_summary(user_id: int):
         "total_spent":        round(total, 2),
         "budget":             budget,
         "budget_used_pct":    round(total / budget * 100, 1) if budget else 0,
-        "transactions":       row["txns"],
+        "transactions":       row["txns"] or 0,
         "top_category":       top_cat["category"] if top_cat else "N/A",
         "status":             "over budget" if total > budget else "on track",
         "category_breakdown": {r["category"]: round(float(r["s"]), 2) for r in cat_rows},

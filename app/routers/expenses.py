@@ -162,14 +162,55 @@ def set_budget(budget: BudgetCreate):
 
 @router.get("/budgets/{user_id}", response_model=list[BudgetResponse])
 def get_budgets(user_id: int, month: str | None = None):
+    from datetime import date
+    current_month = month or date.today().strftime("%Y-%m")
     conn = get_connection()
-    if month:
-        rows = conn.execute(
-            "SELECT * FROM budgets WHERE user_id = ? AND month = ?", (user_id, month)
+
+    # Get budgets for the requested/current month
+    rows = conn.execute(
+        "SELECT * FROM budgets WHERE user_id = ? AND month = ?",
+        (user_id, current_month)
+    ).fetchall()
+
+    # If no budgets exist for this month, carry forward from the most recent past month
+    if not rows:
+        last_rows = conn.execute(
+            """
+            SELECT category, limit_amt
+            FROM budgets
+            WHERE user_id = ?
+              AND month < ?
+            ORDER BY month DESC
+            """,
+            (user_id, current_month)
         ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM budgets WHERE user_id = ?", (user_id,)
-        ).fetchall()
+
+        # Get unique categories from most recent month only
+        seen = set()
+        to_carry = []
+        for r in last_rows:
+            if r["category"] not in seen:
+                seen.add(r["category"])
+                to_carry.append(r)
+
+        # Insert carried-forward budgets for current month
+        if to_carry:
+            cursor = conn.cursor()
+            for r in to_carry:
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO budgets (user_id, category, limit_amt, month)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (user_id, r["category"], r["limit_amt"], current_month)
+                )
+            conn.commit()
+
+            # Re-fetch the newly inserted rows
+            rows = conn.execute(
+                "SELECT * FROM budgets WHERE user_id = ? AND month = ?",
+                (user_id, current_month)
+            ).fetchall()
+
     conn.close()
     return [dict(r) for r in rows]

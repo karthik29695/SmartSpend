@@ -223,7 +223,7 @@
         <div x-show="isSidebarOpen" @click="isSidebarOpen=false" x-transition.opacity class="fixed inset-0 bg-slate-900/40 dark:bg-black/60 z-40 lg:hidden backdrop-blur-sm"></div>
 
         <!-- Sidebar -->
-        <aside :class="isSidebarOpen ? 'translate-x-0 w-[280px]' : '-translate-x-full lg:translate-x-0 lg:w-[105px] w-[280px]'"
+        <aside :class="isSidebarOpen ? 'translate-x-0 w-[280px]' : '-translate-x-full lg:translate-x-0 lg:w-[72px] w-[280px]'"
                class="fixed top-0 left-0 h-full bg-white/70 dark:bg-darkcard/70 backdrop-blur-2xl border-r border-white/50 dark:border-darkborder z-50 transform transition-all duration-300 ease-in-out flex flex-col overflow-hidden">
             <div class="h-20 flex items-center px-8 border-b border-slate-200/50 dark:border-darkborder/50 justify-between lg:justify-start shrink-0">
                 <div class="flex items-center gap-3">
@@ -255,7 +255,7 @@
         </aside>
 
         <!-- Main Workspace -->
-        <div :class="isSidebarOpen ? 'lg:ml-[280px]' : 'lg:ml-[105px]'" class="flex flex-col flex-1 w-full min-h-screen transition-all duration-300">
+        <div :class="isSidebarOpen ? 'lg:ml-[280px]' : 'lg:ml-[72px]'" class="flex flex-col flex-1 w-full min-h-screen transition-all duration-300">
             <header class="h-20 bg-white/60 dark:bg-darkcard/60 backdrop-blur-2xl border-b border-white/40 dark:border-darkborder/50 flex items-center justify-between px-6 sm:px-10 sticky top-0 z-30 shadow-sm">
                 <div class="flex items-center gap-4">
                     <button @click="isSidebarOpen=!isSidebarOpen" class="p-2 -ml-2 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors">
@@ -721,7 +721,6 @@
                                 </div>
                                 <div>
                                     <h3 class="font-extrabold text-lg text-slate-900 dark:text-white">SmartBudget AI Core</h3>
-                                    <p class="text-xs text-emerald-500 font-bold tracking-widest uppercase">Powered by Gemini</p>
                                 </div>
                             </div>
                             <button @click="clearChatSession()" class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-semibold px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">Clear chat</button>
@@ -1246,7 +1245,7 @@
                 try {
                     const currentMonth = new Date().toISOString().slice(0, 7);
                     const [budgets, expenses] = await Promise.all([
-                        apiFetch(`/expenses/budgets/${getUserId()}`),
+                        apiFetch(`/expenses/budgets/${getUserId()}?month=${new Date().toISOString().slice(0,7)}`),
                         apiFetch(`/expenses/${getUserId()}`)
                     ]);
                     const catLower = (category || '').toLowerCase();
@@ -1363,7 +1362,7 @@
                 try {
                     const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
                     const [raw, allExpenses] = await Promise.all([
-                        apiFetch(`/expenses/budgets/${getUserId()}`),
+                        apiFetch(`/expenses/budgets/${getUserId()}?month=${new Date().toISOString().slice(0,7)}`),
                         apiFetch(`/expenses/${getUserId()}`)
                     ]);
                     // Build spend map for CURRENT MONTH only (keyed by lowercase)
@@ -1424,7 +1423,7 @@
                     const [summary, expenses, budgets] = await Promise.all([
                         apiFetch(`/analytics/${getUserId()}/summary`),
                         apiFetch(`/expenses/${getUserId()}`),
-                        apiFetch(`/expenses/budgets/${getUserId()}`)
+                        apiFetch(`/expenses/budgets/${getUserId()}?month=${new Date().toISOString().slice(0,7)}`)
                     ]);
                     this.userBudgetInfo = summary;
                     // Build category spent map for current month
